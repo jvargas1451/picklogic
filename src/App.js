@@ -167,7 +167,8 @@ export default function App() {
     showToast("Status updated");
   };
 
-  const filtered = tickets.filter(t => filter==="all"||t.game===filter||filter==="open"&&t.status==="open");
+  const filtered = tickets.filter(t => filter==="all" || t.game===filter || (filter==="open" && t.status==="open"));
+
 
   const stats = {
     total: tickets.length,
