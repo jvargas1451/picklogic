@@ -344,10 +344,3 @@ export default function App() {
     </>
   );
 }
-```
-
-Save with Ctrl+S, then push:
-```
-git add .
-git commit -m "Fix App.js and add live jackpot config"
-git push
