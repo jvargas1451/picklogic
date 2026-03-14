@@ -1,5 +1,5 @@
 import { useState } from "react";
-
+import config from "./config";
 const GAMES = {
   pb: { name: "Powerball", main: [1, 69], special: [1, 26], mainCount: 5, class: "pb" },
   mm: { name: "Mega Millions", main: [1, 70], special: [1, 25], mainCount: 5, class: "mm" },
@@ -208,7 +208,16 @@ export default function App() {
                   <div key={key} style={S.gameCard(game===key,key)} onClick={()=>{setGame(key);setPick(null);setShowSave(false);}}>
                     <div style={S.gameName(key)}>{g.name}</div>
                     <div style={S.gameOdds}>{key==="pb"?"1 in 292,201,338":"1 in 302,575,350"}</div>
-                    <div style={S.gameJackpot}>{key==="pb"?"$450M":"$320M"}</div>
+                    <div style={S.gameJackpot}>{config.jackpots[key]}</div>
+<div style={{fontSize:11, color:"#6b6b82", fontFamily:"'DM Mono', monospace", marginTop:4}}>Next: {config.nextDraw[key]}</div>
+```
+
+Save, then in Command Prompt run:
+```
+cd C:\Users\jvargas\Projects\picklogic
+git add .
+git commit -m "Add live jackpot config"
+git push
                   </div>
                 ))}
               </div>
