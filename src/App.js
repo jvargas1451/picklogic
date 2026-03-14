@@ -1,5 +1,6 @@
 import { useState } from "react";
 import config from "./config";
+
 const GAMES = {
   pb: { name: "Powerball", main: [1, 69], special: [1, 26], mainCount: 5, class: "pb" },
   mm: { name: "Mega Millions", main: [1, 70], special: [1, 25], mainCount: 5, class: "mm" },
@@ -54,6 +55,7 @@ const S = {
   gameName: (type) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: type === "pb" ? "#e8364a" : "#f5a623", marginBottom: 4 }),
   gameOdds: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82" },
   gameJackpot: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 20, marginTop: 8, color: "#f0f0f5" },
+  gameNextDraw: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", marginTop: 4 },
   modesRow: { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" },
   modeBtn: (active) => ({ padding: "8px 16px", borderRadius: 20, border: `1px solid ${active ? "#7c6aff" : "#2a2a38"}`, background: active ? "rgba(124,106,255,0.15)" : "transparent", color: active ? "#7c6aff" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all 0.2s" }),
   pickBox: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 20, padding: "28px 24px", marginBottom: 16 },
@@ -112,7 +114,6 @@ export default function App() {
   const [toast, setToast] = useState("");
 
   const persist = (t) => { setTickets(t); localStorage.setItem("pl_tickets", JSON.stringify(t)); };
-
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
 
   const generate = () => {
@@ -169,7 +170,6 @@ export default function App() {
 
   const filtered = tickets.filter(t => filter==="all" || t.game===filter || (filter==="open" && t.status==="open"));
 
-
   const stats = {
     total: tickets.length,
     wins: tickets.filter(t=>t.status==="won").length,
@@ -199,7 +199,6 @@ export default function App() {
             ))}
           </nav>
 
-          {/* PICK VIEW */}
           {view==="pick" && (
             <div>
               <div style={S.sectionLabel}>Select Game</div>
@@ -209,15 +208,7 @@ export default function App() {
                     <div style={S.gameName(key)}>{g.name}</div>
                     <div style={S.gameOdds}>{key==="pb"?"1 in 292,201,338":"1 in 302,575,350"}</div>
                     <div style={S.gameJackpot}>{config.jackpots[key]}</div>
-<div style={{fontSize:11, color:"#6b6b82", fontFamily:"'DM Mono', monospace", marginTop:4}}>Next: {config.nextDraw[key]}</div>
-```
-
-Save, then in Command Prompt run:
-```
-cd C:\Users\jvargas\Projects\picklogic
-git add .
-git commit -m "Add live jackpot config"
-git push
+                    <div style={S.gameNextDraw}>Next: {config.nextDraw[key]}</div>
                   </div>
                 ))}
               </div>
@@ -285,7 +276,6 @@ git push
             </div>
           )}
 
-          {/* HISTORY VIEW */}
           {view==="history" && (
             <div>
               <div style={S.histHeader}>
@@ -323,7 +313,6 @@ git push
             </div>
           )}
 
-          {/* STATS VIEW */}
           {view==="stats" && (
             <div>
               <div style={S.histHeader}>
@@ -346,7 +335,6 @@ git push
           )}
         </div>
 
-        {/* Toast */}
         {toast && (
           <div style={{ position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)", background:"#1c1c26", border:"1px solid #2a2a38", borderRadius:12, padding:"14px 24px", fontSize:13, fontWeight:500, color:"#3ecf8e", boxShadow:"0 8px 32px rgba(0,0,0,0.5)", whiteSpace:"nowrap", zIndex:100 }}>
             {toast}
@@ -356,3 +344,10 @@ git push
     </>
   );
 }
+```
+
+Save with Ctrl+S, then push:
+```
+git add .
+git commit -m "Fix App.js and add live jackpot config"
+git push
