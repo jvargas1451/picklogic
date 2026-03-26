@@ -4,12 +4,12 @@
 
 const config = {
   jackpots: {
-    pb: "$75M",
-    mm: "$50M",
+    pb: "$147M",
+    mm: "$70M",
   },
   nextDraw: {
-    pb: "Sat, Mar 15",
-    mm: "Fri, Mar 14",
+    pb: "Wed, Mar 25",
+    mm: "Fri, Mar 27",
   },
 };
 
