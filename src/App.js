@@ -63,7 +63,7 @@ const S = {
   modeTag: { fontSize: 10, padding: "3px 8px", borderRadius: 10, background: "rgba(124,106,255,0.15)", color: "#7c6aff", border: "1px solid rgba(124,106,255,0.2)" },
   ballsRow: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 16 },
   ball: (type) => ({ width: 48, height: 48, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 16, background: type === "main" ? "#1c1c26" : type === "pb" ? "#e8364a" : "#f5a623", border: type === "main" ? "2px solid #2a2a38" : "none", color: type === "mm" ? "#0a0a0f" : "#f0f0f5", boxShadow: type === "pb" ? "0 0 20px rgba(232,54,74,0.3)" : type === "mm" ? "0 0 20px rgba(245,166,35,0.3)" : "none" }),
-  sep: { color: "#2a2a38", fontSize: 20 },
+  sep: { color: "#6b6b82", fontSize: 20 },
   rationale: { fontSize: 12, color: "#6b6b82", fontStyle: "italic", lineHeight: 1.5, paddingTop: 14, borderTop: "1px solid #2a2a38" },
   emptyPick: { textAlign: "center", padding: "20px 0" },
   emptyIcon: { fontSize: 32, marginBottom: 10, opacity: 0.3 },
@@ -73,12 +73,12 @@ const S = {
   saveForm: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 20, padding: 24, marginTop: 16 },
   formLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, display: "block" },
   formInput: { width: "100%", padding: "12px 14px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: 14, outline: "none", marginBottom: 16 },
-  formSplit: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 0 },
+  formSplit: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
   btnSave: { width: "100%", padding: 14, borderRadius: 12, border: "none", background: "#7c6aff", color: "white", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 20px rgba(124,106,255,0.3)", marginTop: 16 },
   disclaimer: { marginTop: 28, padding: 16, borderRadius: 12, border: "1px solid #2a2a38", background: "#13131a" },
   disclaimerText: { fontSize: 11, color: "#6b6b82", lineHeight: 1.6, textAlign: "center" },
   histHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 },
-  histTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 20 },
+  histTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 20, color: "#f0f0f5" },
   ticketCount: { fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#6b6b82", background: "#13131a", border: "1px solid #2a2a38", padding: "4px 10px", borderRadius: 20 },
   filterRow: { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" },
   filterBtn: (active) => ({ padding: "7px 14px", borderRadius: 20, border: `1px solid ${active ? "#f0f0f5" : "#2a2a38"}`, background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }),
@@ -90,14 +90,18 @@ const S = {
   statusBadge: (s) => ({ fontFamily: "'DM Mono', monospace", fontSize: 10, padding: "3px 8px", borderRadius: 10, letterSpacing: 0.5, textTransform: "uppercase", cursor: "pointer", background: s === "won" ? "rgba(62,207,142,0.15)" : s === "lost" ? "rgba(232,54,74,0.1)" : "rgba(107,107,130,0.2)", color: s === "won" ? "#3ecf8e" : s === "lost" ? "#e8364a" : "#6b6b82", border: `1px solid ${s === "won" ? "rgba(62,207,142,0.3)" : s === "lost" ? "rgba(232,54,74,0.2)" : "#2a2a38"}` }),
   tBallsRow: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
   tBall: (type) => ({ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, background: type === "main" ? "#1c1c26" : type === "pb" ? "#e8364a" : "#f5a623", border: type === "main" ? "1.5px solid #2a2a38" : "none", color: type === "mm" ? "#0a0a0f" : "#f0f0f5" }),
-  ticketNotes: { marginTop: 12, paddingTop: 12, borderTop: "1px solid #2a2a38", fontSize: 12, color: "#6b6b82", fontStyle: "italic" },
+  ticketNotes: { marginTop: 10, fontSize: 12, color: "#6b6b82", fontStyle: "italic" },
+  ticketEditRow: { display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid #2a2a38", alignItems: "center", flexWrap: "wrap" },
+  ticketEditInput: { flex: 1, minWidth: 80, padding: "8px 10px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 8, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: 12, outline: "none" },
+  ticketEditLabel: { fontFamily: "'DM Mono', monospace", fontSize: 9, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase", marginBottom: 4, display: "block" },
   emptyState: { textAlign: "center", padding: "60px 20px", color: "#6b6b82" },
   emptyStateTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 16, color: "#f0f0f5", marginBottom: 8 },
+  emptyStateText: { color: "#6b6b82", fontSize: 13 },
   statsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 },
   statCard: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 16, padding: "20px 18px" },
   statValue: (color) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 28, marginBottom: 4, color: color || "#f0f0f5" }),
   statLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase" },
-  freqTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 14, marginBottom: 14, marginTop: 24 },
+  freqTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 14, marginBottom: 14, marginTop: 24, color: "#f0f0f5" },
   freqGrid: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 },
   freqBall: (hot) => ({ width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, background: hot ? "rgba(232,54,74,0.2)" : "rgba(124,106,255,0.1)", color: hot ? "#e8364a" : "#7c6aff", border: `1.5px solid ${hot ? "rgba(232,54,74,0.4)" : "rgba(124,106,255,0.2)"}` }),
 };
@@ -110,8 +114,10 @@ export default function App() {
   const [showSave, setShowSave] = useState(false);
   const [tickets, setTickets] = useState(() => JSON.parse(localStorage.getItem("pl_tickets") || "[]"));
   const [filter, setFilter] = useState("all");
-  const [form, setForm] = useState({ drawDate: "", stake: "", payout: "", notes: "" });
+  const [form, setForm] = useState({ drawDate: "", notes: "" });
   const [toast, setToast] = useState("");
+  const [expandedTicket, setExpandedTicket] = useState(null);
+  const [editValues, setEditValues] = useState({});
 
   const persist = (t) => { setTickets(t); localStorage.setItem("pl_tickets", JSON.stringify(t)); };
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
@@ -148,16 +154,23 @@ export default function App() {
     const special = randInt(g.special[0], g.special[1]);
     setPick({ game, numbers: nums, special, mode, rationale });
     setShowSave(false);
-    setForm({ drawDate: new Date().toISOString().split("T")[0], stake: "", payout: "", notes: "" });
+    setForm({ drawDate: new Date().toISOString().split("T")[0], notes: "" });
   };
 
   const saveTicket = () => {
     if (!pick) return;
-    const t = { id: Date.now(), ...pick, ...form, stake: parseFloat(form.stake)||0, payout: parseFloat(form.payout)||0, status: "open", savedAt: new Date().toISOString() };
+    const t = {
+      id: Date.now(), ...pick,
+      drawDate: form.drawDate,
+      notes: form.notes,
+      stake: 0, payout: 0,
+      status: "open",
+      savedAt: new Date().toISOString()
+    };
     persist([t, ...tickets]);
     setShowSave(false);
     setPick(null);
-    setForm({ drawDate: "", stake: "", payout: "", notes: "" });
+    setForm({ drawDate: "", notes: "" });
     showToast("✓ Ticket saved!");
   };
 
@@ -166,6 +179,20 @@ export default function App() {
     const updated = tickets.map(t => t.id===id ? {...t, status: states[(states.indexOf(t.status)+1)%3]} : t);
     persist(updated);
     showToast("Status updated");
+  };
+
+  const saveTicketEdit = (id) => {
+    const vals = editValues[id] || {};
+    const updated = tickets.map(t => t.id===id ? {
+      ...t,
+      stake: parseFloat(vals.stake) || t.stake || 0,
+      payout: parseFloat(vals.payout) || t.payout || 0,
+      notes: vals.notes !== undefined ? vals.notes : t.notes
+    } : t);
+    persist(updated);
+    setExpandedTicket(null);
+    setEditValues({});
+    showToast("Ticket updated");
   };
 
   const filtered = tickets.filter(t => filter==="all" || t.game===filter || (filter==="open" && t.status==="open"));
@@ -254,18 +281,9 @@ export default function App() {
                 <div style={S.saveForm}>
                   <label style={S.formLabel}>Draw Date</label>
                   <input style={S.formInput} type="date" value={form.drawDate} onChange={e=>setForm({...form,drawDate:e.target.value})} />
-                  <div style={S.formSplit}>
-                    <div>
-                      <label style={S.formLabel}>Stake ($)</label>
-                      <input style={S.formInput} type="number" placeholder="2.00" value={form.stake} onChange={e=>setForm({...form,stake:e.target.value})} />
-                    </div>
-                    <div>
-                      <label style={S.formLabel}>Payout ($)</label>
-                      <input style={S.formInput} type="number" placeholder="0.00" value={form.payout} onChange={e=>setForm({...form,payout:e.target.value})} />
-                    </div>
-                  </div>
                   <label style={S.formLabel}>Notes (optional)</label>
-                  <input style={S.formInput} type="text" placeholder="Friday draw..." value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} />
+                  <input style={S.formInput} type="text" placeholder="e.g. Friday lucky pick..." value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} />
+                  <div style={{ fontSize:11, color:"#6b6b82", marginBottom:12 }}>Tip: add stake and payout after the draw from My Tickets</div>
                   <button style={S.btnSave} onClick={saveTicket}>Save Ticket</button>
                 </div>
               )}
@@ -291,7 +309,7 @@ export default function App() {
                 <div style={S.emptyState}>
                   <div style={{fontSize:40,marginBottom:16,opacity:0.3}}>🎟️</div>
                   <div style={S.emptyStateTitle}>No tickets yet</div>
-                  <div>Save a ticket from the Quick Pick tab</div>
+                  <div style={S.emptyStateText}>Save a ticket from the Quick Pick tab</div>
                 </div>
               ) : filtered.map(t=>(
                 <div key={t.id} style={S.ticketCard}>
@@ -299,7 +317,7 @@ export default function App() {
                     <div style={S.ticketGame(t.game)}>{GAMES[t.game].name}</div>
                     <div style={S.ticketMeta}>
                       <span style={S.ticketDate}>{t.drawDate ? new Date(t.drawDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—"}</span>
-                      <span style={S.statusBadge(t.status)} onClick={()=>cycleStatus(t.id)}>{t.status.toUpperCase()}</span>
+                      <span style={S.statusBadge(t.status)} onClick={()=>cycleStatus(t.id)} title="Tap to update status">{t.status.toUpperCase()}</span>
                     </div>
                   </div>
                   <div style={S.tBallsRow}>
@@ -308,6 +326,40 @@ export default function App() {
                     <div style={S.tBall(t.game)}>{t.special}</div>
                   </div>
                   {t.notes && <div style={S.ticketNotes}>{t.notes}</div>}
+
+                  {expandedTicket === t.id ? (
+                    <div style={S.ticketEditRow}>
+                      <div style={{flex:1,minWidth:80}}>
+                        <label style={S.ticketEditLabel}>Stake ($)</label>
+                        <input style={S.ticketEditInput} type="number" placeholder={t.stake||"0.00"}
+                          onChange={e=>setEditValues({...editValues,[t.id]:{...(editValues[t.id]||{}),stake:e.target.value}})} />
+                      </div>
+                      <div style={{flex:1,minWidth:80}}>
+                        <label style={S.ticketEditLabel}>Payout ($)</label>
+                        <input style={S.ticketEditInput} type="number" placeholder={t.payout||"0.00"}
+                          onChange={e=>setEditValues({...editValues,[t.id]:{...(editValues[t.id]||{}),payout:e.target.value}})} />
+                      </div>
+                      <div style={{flex:2,minWidth:120}}>
+                        <label style={S.ticketEditLabel}>Notes</label>
+                        <input style={S.ticketEditInput} type="text" defaultValue={t.notes||""}
+                          onChange={e=>setEditValues({...editValues,[t.id]:{...(editValues[t.id]||{}),notes:e.target.value}})} />
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:4,paddingTop:14}}>
+                        <button onClick={()=>saveTicketEdit(t.id)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#7c6aff",color:"white",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Save</button>
+                        <button onClick={()=>{setExpandedTicket(null);setEditValues({});}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2a2a38",background:"transparent",color:"#6b6b82",fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{marginTop:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div style={{fontSize:11,color:"#6b6b82",fontFamily:"'DM Mono',monospace"}}>
+                        {t.stake > 0 ? `$${t.stake.toFixed(2)} wagered${t.payout > 0 ? ` · $${t.payout.toFixed(2)} won` : ""}` : ""}
+                      </div>
+                      <button onClick={()=>{setExpandedTicket(t.id);setEditValues({[t.id]:{stake:t.stake,payout:t.payout,notes:t.notes||""}});}}
+                        style={{fontSize:11,color:"#6b6b82",background:"transparent",border:"1px solid #2a2a38",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+                        Edit
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
