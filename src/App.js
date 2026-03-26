@@ -214,7 +214,7 @@ export default function App() {
       <div style={{ background:"#0a0a0f", minHeight:"100vh" }}>
         <div style={S.app}>
           <header style={S.header}>
-            <div style={S.logo}>Pick<span style={S.logoAccent}>Logic</span></div>
+            <div style={S.logo}><span style={{color:"#f0f0f5"}}>Pick</span><span style={S.logoAccent}>Logic</span></div>
             <div style={S.logoBadge}>ENTERTAINMENT ONLY</div>
           </header>
 
