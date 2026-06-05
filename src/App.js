@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import config from "./config";
+import { supabase } from "./supabase";
 
 const GAMES = {
   pb: { name: "Powerball", main: [1, 69], special: [1, 26], mainCount: 5, class: "pb" },
@@ -104,22 +105,112 @@ const S = {
   freqTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 14, marginBottom: 14, marginTop: 24, color: "#f0f0f5" },
   freqGrid: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 },
   freqBall: (hot) => ({ width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, background: hot ? "rgba(232,54,74,0.2)" : "rgba(124,106,255,0.1)", color: hot ? "#e8364a" : "#7c6aff", border: `1.5px solid ${hot ? "rgba(232,54,74,0.4)" : "rgba(124,106,255,0.2)"}` }),
+  // Auth screen styles
+  authWrap: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 20px" },
+  authBox: { width: "100%", maxWidth: 400, background: "#13131a", border: "1px solid #2a2a38", borderRadius: 24, padding: 32 },
+  authLogo: { fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 28, textAlign: "center", marginBottom: 8 },
+  authSubtitle: { fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#6b6b82", textAlign: "center", marginBottom: 32, letterSpacing: 0.5 },
+  authTabs: { display: "flex", gap: 4, background: "#0a0a0f", borderRadius: 10, padding: 4, marginBottom: 28 },
+  authTab: (active) => ({ flex: 1, padding: "9px 0", border: "none", background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, borderRadius: 8, cursor: "pointer" }),
+  authError: { background: "rgba(232,54,74,0.1)", border: "1px solid rgba(232,54,74,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#e8364a", marginBottom: 16 },
+  authSuccess: { background: "rgba(62,207,142,0.1)", border: "1px solid rgba(62,207,142,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#3ecf8e", marginBottom: 16 },
+  signOutBtn: { background: "transparent", border: "1px solid #2a2a38", color: "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: 11, padding: "5px 12px", borderRadius: 8, cursor: "pointer" },
 };
 
+// ── Auth Screen ──────────────────────────────────────────────
+function AuthScreen() {
+  const [tab, setTab] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const handleSubmit = async () => {
+    setError(""); setSuccess(""); setLoading(true);
+    if (tab === "login") {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) setError(error.message);
+    } else {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) setError(error.message);
+      else setSuccess("Account created! Check your email to confirm, then log in.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ background: "#0a0a0f", minHeight: "100vh" }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+      <div style={S.authWrap}>
+        <div style={S.authBox}>
+          <div style={S.authLogo}><span style={{ color: "#f0f0f5" }}>Pick</span><span style={S.logoAccent}>Logic</span></div>
+          <div style={S.authSubtitle}>POWERBALL · MEGA MILLIONS</div>
+          <div style={S.authTabs}>
+            <button style={S.authTab(tab === "login")} onClick={() => { setTab("login"); setError(""); setSuccess(""); }}>Log In</button>
+            <button style={S.authTab(tab === "signup")} onClick={() => { setTab("signup"); setError(""); setSuccess(""); }}>Sign Up</button>
+          </div>
+          {error && <div style={S.authError}>{error}</div>}
+          {success && <div style={S.authSuccess}>{success}</div>}
+          <label style={S.formLabel}>Email</label>
+          <input style={S.formInput} type="email" placeholder="you@email.com" value={email}
+            onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleSubmit()} />
+          <label style={S.formLabel}>Password</label>
+          <input style={S.formInput} type="password" placeholder="••••••••" value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleSubmit()} />
+          <button style={S.btnSave} onClick={handleSubmit} disabled={loading}>
+            {loading ? "Please wait..." : tab === "login" ? "Log In" : "Create Account"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main App ─────────────────────────────────────────────────
 export default function App() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [view, setView] = useState("pick");
   const [game, setGame] = useState("pb");
   const [mode, setMode] = useState("random");
   const [pick, setPick] = useState(null);
   const [showSave, setShowSave] = useState(false);
-  const [tickets, setTickets] = useState(() => JSON.parse(localStorage.getItem("pl_tickets") || "[]"));
+  const [tickets, setTickets] = useState([]);
   const [filter, setFilter] = useState("all");
   const [form, setForm] = useState({ drawDate: "", notes: "" });
   const [toast, setToast] = useState("");
   const [expandedTicket, setExpandedTicket] = useState(null);
   const [editValues, setEditValues] = useState({});
 
-  const persist = (t) => { setTickets(t); localStorage.setItem("pl_tickets", JSON.stringify(t)); };
+  // Listen for auth state changes
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load tickets from Supabase when session is available
+  useEffect(() => {
+    if (session) loadTickets();
+    else setTickets([]);
+  }, [session]);
+
+  const loadTickets = async () => {
+    const { data, error } = await supabase
+      .from("tickets")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (!error) setTickets(data || []);
+  };
+
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
 
   const generate = () => {
@@ -157,42 +248,54 @@ export default function App() {
     setForm({ drawDate: new Date().toISOString().split("T")[0], notes: "" });
   };
 
-  const saveTicket = () => {
-    if (!pick) return;
-    const t = {
-      id: Date.now(), ...pick,
-      drawDate: form.drawDate,
-      notes: form.notes,
-      stake: 0, payout: 0,
+  const saveTicket = async () => {
+    if (!pick || !session) return;
+    const { data, error } = await supabase.from("tickets").insert({
+      user_id: session.user.id,
+      game: pick.game,
+      numbers: pick.numbers,
+      special: pick.special,
+      pick_mode: pick.mode,
+      draw_date: form.drawDate || null,
+      notes: form.notes || null,
+      stake: 0,
+      payout: 0,
       status: "open",
-      savedAt: new Date().toISOString()
-    };
-    persist([t, ...tickets]);
+    }).select().single();
+    if (error) { showToast("Error saving ticket"); return; }
+    setTickets([data, ...tickets]);
     setShowSave(false);
     setPick(null);
     setForm({ drawDate: "", notes: "" });
     showToast("✓ Ticket saved!");
   };
 
-  const cycleStatus = (id) => {
+  const cycleStatus = async (id) => {
     const states = ["open","won","lost"];
-    const updated = tickets.map(t => t.id===id ? {...t, status: states[(states.indexOf(t.status)+1)%3]} : t);
-    persist(updated);
-    showToast("Status updated");
+    const ticket = tickets.find(t => t.id === id);
+    const newStatus = states[(states.indexOf(ticket.status)+1)%3];
+    const { error } = await supabase.from("tickets").update({ status: newStatus }).eq("id", id);
+    if (!error) {
+      setTickets(tickets.map(t => t.id===id ? {...t, status: newStatus} : t));
+      showToast("Status updated");
+    }
   };
 
-  const saveTicketEdit = (id) => {
+  const saveTicketEdit = async (id) => {
     const vals = editValues[id] || {};
-    const updated = tickets.map(t => t.id===id ? {
-      ...t,
-      stake: parseFloat(vals.stake) || t.stake || 0,
-      payout: parseFloat(vals.payout) || t.payout || 0,
-      notes: vals.notes !== undefined ? vals.notes : t.notes
-    } : t);
-    persist(updated);
-    setExpandedTicket(null);
-    setEditValues({});
-    showToast("Ticket updated");
+    const ticket = tickets.find(t => t.id === id);
+    const updates = {
+      stake: parseFloat(vals.stake) || ticket.stake || 0,
+      payout: parseFloat(vals.payout) || ticket.payout || 0,
+      notes: vals.notes !== undefined ? vals.notes : ticket.notes,
+    };
+    const { error } = await supabase.from("tickets").update(updates).eq("id", id);
+    if (!error) {
+      setTickets(tickets.map(t => t.id===id ? {...t, ...updates} : t));
+      setExpandedTicket(null);
+      setEditValues({});
+      showToast("Ticket updated");
+    }
   };
 
   const filtered = tickets.filter(t => filter==="all" || t.game===filter || (filter==="open" && t.status==="open"));
@@ -208,6 +311,15 @@ export default function App() {
   tickets.forEach(t=>t.numbers.forEach(n=>{freq[n]=(freq[n]||0)+1;}));
   const sorted = Object.entries(freq).sort((a,b)=>b[1]-a[1]);
 
+  if (authLoading) return (
+    <div style={{ background: "#0a0a0f", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&display=swap" rel="stylesheet" />
+      <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 22, color: "#f0f0f5" }}>Pick<span style={{ color: "#7c6aff" }}>Logic</span></div>
+    </div>
+  );
+
+  if (!session) return <AuthScreen />;
+
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
@@ -215,7 +327,7 @@ export default function App() {
         <div style={S.app}>
           <header style={S.header}>
             <div style={S.logo}><span style={{color:"#f0f0f5"}}>Pick</span><span style={S.logoAccent}>Logic</span></div>
-            <div style={S.logoBadge}>ENTERTAINMENT ONLY</div>
+            <button style={S.signOutBtn} onClick={() => supabase.auth.signOut()}>Sign out</button>
           </header>
 
           <nav style={S.nav}>
@@ -316,7 +428,7 @@ export default function App() {
                   <div style={S.ticketTop}>
                     <div style={S.ticketGame(t.game)}>{GAMES[t.game].name}</div>
                     <div style={S.ticketMeta}>
-                      <span style={S.ticketDate}>{t.drawDate ? new Date(t.drawDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—"}</span>
+                      <span style={S.ticketDate}>{t.draw_date ? new Date(t.draw_date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—"}</span>
                       <span style={S.statusBadge(t.status)} onClick={()=>cycleStatus(t.id)} title="Tap to update status">{t.status.toUpperCase()}</span>
                     </div>
                   </div>
