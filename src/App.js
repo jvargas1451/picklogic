@@ -42,6 +42,43 @@ function pickUnique(count, min, max, weights) {
   return nums.sort((a, b) => a - b);
 }
 
+// ── Result checking ───────────────────────────────────────────
+function checkResult(ticket, draws) {
+  const draw = draws.find(d => d.game === ticket.game && d.draw_date === ticket.draw_date);
+  if (!draw) return null;
+
+  const matchedMain = ticket.numbers.filter(n => draw.numbers.includes(n)).length;
+  const matchedSpecial = ticket.special === draw.special;
+
+  if (ticket.game === "pb") {
+    if (matchedMain === 5 && matchedSpecial) return { label: "🏆 JACKPOT", color: "#f5a623", bg: "rgba(245,166,35,0.15)", border: "rgba(245,166,35,0.4)" };
+    if (matchedMain === 5) return { label: "Matched 5 — $1,000,000", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 4 && matchedSpecial) return { label: "Matched 4 + PB — $50,000", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 4) return { label: "Matched 4 — $100", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 3 && matchedSpecial) return { label: "Matched 3 + PB — $100", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 3) return { label: "Matched 3 — $7", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 2 && matchedSpecial) return { label: "Matched 2 + PB — $7", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 1 && matchedSpecial) return { label: "Matched 1 + PB — $4", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedSpecial) return { label: "Matched PB — $4", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    return { label: "No match", color: "#6b6b82", bg: "rgba(107,107,130,0.1)", border: "#2a2a38" };
+  }
+
+  if (ticket.game === "mm") {
+    if (matchedMain === 5 && matchedSpecial) return { label: "🏆 JACKPOT", color: "#f5a623", bg: "rgba(245,166,35,0.15)", border: "rgba(245,166,35,0.4)" };
+    if (matchedMain === 5) return { label: "Matched 5 — $1,000,000", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 4 && matchedSpecial) return { label: "Matched 4 + MB — $10,000", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 4) return { label: "Matched 4 — $500", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 3 && matchedSpecial) return { label: "Matched 3 + MB — $200", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 3) return { label: "Matched 3 — $10", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 2 && matchedSpecial) return { label: "Matched 2 + MB — $10", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedMain === 1 && matchedSpecial) return { label: "Matched 1 + MB — $4", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    if (matchedSpecial) return { label: "Matched MB — $2", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
+    return { label: "No match", color: "#6b6b82", bg: "rgba(107,107,130,0.1)", border: "#2a2a38" };
+  }
+
+  return null;
+}
+
 const S = {
   app: { maxWidth: 480, margin: "0 auto", padding: "0 20px 100px", position: "relative", zIndex: 1 },
   header: { padding: "32px 0 24px", display: "flex", alignItems: "center", justifyContent: "space-between" },
@@ -74,7 +111,6 @@ const S = {
   saveForm: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 20, padding: 24, marginTop: 16 },
   formLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, display: "block" },
   formInput: { width: "100%", padding: "12px 14px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: 14, outline: "none", marginBottom: 16 },
-  formSplit: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
   btnSave: { width: "100%", padding: 14, borderRadius: 12, border: "none", background: "#7c6aff", color: "white", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 20px rgba(124,106,255,0.3)", marginTop: 16 },
   disclaimer: { marginTop: 28, padding: 16, borderRadius: 12, border: "1px solid #2a2a38", background: "#13131a" },
   disclaimerText: { fontSize: 11, color: "#6b6b82", lineHeight: 1.6, textAlign: "center" },
@@ -89,6 +125,7 @@ const S = {
   ticketMeta: { display: "flex", alignItems: "center", gap: 10 },
   ticketDate: { fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#6b6b82" },
   statusBadge: (s) => ({ fontFamily: "'DM Mono', monospace", fontSize: 10, padding: "3px 8px", borderRadius: 10, letterSpacing: 0.5, textTransform: "uppercase", cursor: "pointer", background: s === "won" ? "rgba(62,207,142,0.15)" : s === "lost" ? "rgba(232,54,74,0.1)" : "rgba(107,107,130,0.2)", color: s === "won" ? "#3ecf8e" : s === "lost" ? "#e8364a" : "#6b6b82", border: `1px solid ${s === "won" ? "rgba(62,207,142,0.3)" : s === "lost" ? "rgba(232,54,74,0.2)" : "#2a2a38"}` }),
+  resultBadge: (r) => ({ display: "inline-block", fontFamily: "'DM Mono', monospace", fontSize: 10, padding: "4px 10px", borderRadius: 10, letterSpacing: 0.5, marginTop: 10, background: r.bg, color: r.color, border: `1px solid ${r.border}` }),
   tBallsRow: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
   tBall: (type) => ({ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, background: type === "main" ? "#1c1c26" : type === "pb" ? "#e8364a" : "#f5a623", border: type === "main" ? "1.5px solid #2a2a38" : "none", color: type === "mm" ? "#0a0a0f" : "#f0f0f5" }),
   ticketNotes: { marginTop: 10, fontSize: 12, color: "#6b6b82", fontStyle: "italic" },
@@ -105,7 +142,6 @@ const S = {
   freqTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 14, marginBottom: 14, marginTop: 24, color: "#f0f0f5" },
   freqGrid: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 },
   freqBall: (hot) => ({ width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, background: hot ? "rgba(232,54,74,0.2)" : "rgba(124,106,255,0.1)", color: hot ? "#e8364a" : "#7c6aff", border: `1.5px solid ${hot ? "rgba(232,54,74,0.4)" : "rgba(124,106,255,0.2)"}` }),
-  // Auth screen styles
   authWrap: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 20px" },
   authBox: { width: "100%", maxWidth: 400, background: "#13131a", border: "1px solid #2a2a38", borderRadius: 24, padding: 32 },
   authLogo: { fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 28, textAlign: "center", marginBottom: 8 },
@@ -179,13 +215,13 @@ export default function App() {
   const [pick, setPick] = useState(null);
   const [showSave, setShowSave] = useState(false);
   const [tickets, setTickets] = useState([]);
+  const [draws, setDraws] = useState([]);
   const [filter, setFilter] = useState("all");
   const [form, setForm] = useState({ drawDate: "", notes: "" });
   const [toast, setToast] = useState("");
   const [expandedTicket, setExpandedTicket] = useState(null);
   const [editValues, setEditValues] = useState({});
 
-  // Listen for auth state changes
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -194,10 +230,10 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
+    loadDraws();
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load tickets from Supabase when session is available
   useEffect(() => {
     if (session) loadTickets();
     else setTickets([]);
@@ -205,10 +241,14 @@ export default function App() {
 
   const loadTickets = async () => {
     const { data, error } = await supabase
-      .from("tickets")
-      .select("*")
-      .order("created_at", { ascending: false });
+      .from("tickets").select("*").order("created_at", { ascending: false });
     if (!error) setTickets(data || []);
+  };
+
+  const loadDraws = async () => {
+    const { data, error } = await supabase
+      .from("draws").select("*").order("draw_date", { ascending: false });
+    if (!error) setDraws(data || []);
   };
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
@@ -258,9 +298,7 @@ export default function App() {
       pick_mode: pick.mode,
       draw_date: form.drawDate || null,
       notes: form.notes || null,
-      stake: 0,
-      payout: 0,
-      status: "open",
+      stake: 0, payout: 0, status: "open",
     }).select().single();
     if (error) { showToast("Error saving ticket"); return; }
     setTickets([data, ...tickets]);
@@ -351,14 +389,12 @@ export default function App() {
                   </div>
                 ))}
               </div>
-
               <div style={S.sectionLabel}>Pick Strategy</div>
               <div style={S.modesRow}>
                 {Object.entries(MODES).map(([key,m])=>(
                   <button key={key} style={S.modeBtn(mode===key)} onClick={()=>setMode(key)}>{m.label}</button>
                 ))}
               </div>
-
               <div style={S.pickBox}>
                 {pick ? (
                   <>
@@ -380,15 +416,12 @@ export default function App() {
                   </div>
                 )}
               </div>
-
               <button style={S.btnPrimary(game)} onClick={generate}>Generate Numbers</button>
-
               {pick && (
                 <button style={S.btnSecondary} onClick={()=>setShowSave(!showSave)}>
                   {showSave ? "Cancel" : "+ Save This Ticket"}
                 </button>
               )}
-
               {showSave && (
                 <div style={S.saveForm}>
                   <label style={S.formLabel}>Draw Date</label>
@@ -399,7 +432,6 @@ export default function App() {
                   <button style={S.btnSave} onClick={saveTicket}>Save Ticket</button>
                 </div>
               )}
-
               <div style={S.disclaimer}>
                 <div style={S.disclaimerText}>PickLogic is an entertainment tool. Pick strategies are for fun — they do not improve your odds of winning. Please play responsibly.</div>
               </div>
@@ -423,57 +455,60 @@ export default function App() {
                   <div style={S.emptyStateTitle}>No tickets yet</div>
                   <div style={S.emptyStateText}>Save a ticket from the Quick Pick tab</div>
                 </div>
-              ) : filtered.map(t=>(
-                <div key={t.id} style={S.ticketCard}>
-                  <div style={S.ticketTop}>
-                    <div style={S.ticketGame(t.game)}>{GAMES[t.game].name}</div>
-                    <div style={S.ticketMeta}>
-                      <span style={S.ticketDate}>{t.draw_date ? new Date(t.draw_date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—"}</span>
-                      <span style={S.statusBadge(t.status)} onClick={()=>cycleStatus(t.id)} title="Tap to update status">{t.status.toUpperCase()}</span>
+              ) : filtered.map(t => {
+                const result = checkResult(t, draws);
+                return (
+                  <div key={t.id} style={S.ticketCard}>
+                    <div style={S.ticketTop}>
+                      <div style={S.ticketGame(t.game)}>{GAMES[t.game].name}</div>
+                      <div style={S.ticketMeta}>
+                        <span style={S.ticketDate}>{t.draw_date ? new Date(t.draw_date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—"}</span>
+                        <span style={S.statusBadge(t.status)} onClick={()=>cycleStatus(t.id)} title="Tap to update status">{t.status.toUpperCase()}</span>
+                      </div>
                     </div>
+                    <div style={S.tBallsRow}>
+                      {t.numbers.map(n=><div key={n} style={S.tBall("main")}>{n}</div>)}
+                      <div style={S.sep}>+</div>
+                      <div style={S.tBall(t.game)}>{t.special}</div>
+                    </div>
+                    {result && <div style={S.resultBadge(result)}>{result.label}</div>}
+                    {t.notes && <div style={S.ticketNotes}>{t.notes}</div>}
+                    {expandedTicket === t.id ? (
+                      <div style={S.ticketEditRow}>
+                        <div style={{flex:1,minWidth:80}}>
+                          <label style={S.ticketEditLabel}>Stake ($)</label>
+                          <input style={S.ticketEditInput} type="number" placeholder={t.stake||"0.00"}
+                            onChange={e=>setEditValues({...editValues,[t.id]:{...(editValues[t.id]||{}),stake:e.target.value}})} />
+                        </div>
+                        <div style={{flex:1,minWidth:80}}>
+                          <label style={S.ticketEditLabel}>Payout ($)</label>
+                          <input style={S.ticketEditInput} type="number" placeholder={t.payout||"0.00"}
+                            onChange={e=>setEditValues({...editValues,[t.id]:{...(editValues[t.id]||{}),payout:e.target.value}})} />
+                        </div>
+                        <div style={{flex:2,minWidth:120}}>
+                          <label style={S.ticketEditLabel}>Notes</label>
+                          <input style={S.ticketEditInput} type="text" defaultValue={t.notes||""}
+                            onChange={e=>setEditValues({...editValues,[t.id]:{...(editValues[t.id]||{}),notes:e.target.value}})} />
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:4,paddingTop:14}}>
+                          <button onClick={()=>saveTicketEdit(t.id)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#7c6aff",color:"white",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Save</button>
+                          <button onClick={()=>{setExpandedTicket(null);setEditValues({});}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2a2a38",background:"transparent",color:"#6b6b82",fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{marginTop:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <div style={{fontSize:11,color:"#6b6b82",fontFamily:"'DM Mono',monospace"}}>
+                          {t.stake > 0 ? `$${t.stake.toFixed(2)} wagered${t.payout > 0 ? ` · $${t.payout.toFixed(2)} won` : ""}` : ""}
+                        </div>
+                        <button onClick={()=>{setExpandedTicket(t.id);setEditValues({[t.id]:{stake:t.stake,payout:t.payout,notes:t.notes||""}});}}
+                          style={{fontSize:11,color:"#6b6b82",background:"transparent",border:"1px solid #2a2a38",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+                          Edit
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div style={S.tBallsRow}>
-                    {t.numbers.map(n=><div key={n} style={S.tBall("main")}>{n}</div>)}
-                    <div style={S.sep}>+</div>
-                    <div style={S.tBall(t.game)}>{t.special}</div>
-                  </div>
-                  {t.notes && <div style={S.ticketNotes}>{t.notes}</div>}
-
-                  {expandedTicket === t.id ? (
-                    <div style={S.ticketEditRow}>
-                      <div style={{flex:1,minWidth:80}}>
-                        <label style={S.ticketEditLabel}>Stake ($)</label>
-                        <input style={S.ticketEditInput} type="number" placeholder={t.stake||"0.00"}
-                          onChange={e=>setEditValues({...editValues,[t.id]:{...(editValues[t.id]||{}),stake:e.target.value}})} />
-                      </div>
-                      <div style={{flex:1,minWidth:80}}>
-                        <label style={S.ticketEditLabel}>Payout ($)</label>
-                        <input style={S.ticketEditInput} type="number" placeholder={t.payout||"0.00"}
-                          onChange={e=>setEditValues({...editValues,[t.id]:{...(editValues[t.id]||{}),payout:e.target.value}})} />
-                      </div>
-                      <div style={{flex:2,minWidth:120}}>
-                        <label style={S.ticketEditLabel}>Notes</label>
-                        <input style={S.ticketEditInput} type="text" defaultValue={t.notes||""}
-                          onChange={e=>setEditValues({...editValues,[t.id]:{...(editValues[t.id]||{}),notes:e.target.value}})} />
-                      </div>
-                      <div style={{display:"flex",flexDirection:"column",gap:4,paddingTop:14}}>
-                        <button onClick={()=>saveTicketEdit(t.id)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#7c6aff",color:"white",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Save</button>
-                        <button onClick={()=>{setExpandedTicket(null);setEditValues({});}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2a2a38",background:"transparent",color:"#6b6b82",fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{marginTop:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                      <div style={{fontSize:11,color:"#6b6b82",fontFamily:"'DM Mono',monospace"}}>
-                        {t.stake > 0 ? `$${t.stake.toFixed(2)} wagered${t.payout > 0 ? ` · $${t.payout.toFixed(2)} won` : ""}` : ""}
-                      </div>
-                      <button onClick={()=>{setExpandedTicket(t.id);setEditValues({[t.id]:{stake:t.stake,payout:t.payout,notes:t.notes||""}});}}
-                        style={{fontSize:11,color:"#6b6b82",background:"transparent",border:"1px solid #2a2a38",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
-                        Edit
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
