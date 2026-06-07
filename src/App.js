@@ -353,7 +353,7 @@ export default function App() {
   };
     const getDrawReminders = () => {
     const now = new Date();
-    const day = 1;
+    const day = now.getDay();
     const today = now.toISOString().split("T")[0];
     const yesterday = new Date(now - 86400000).toISOString().split("T")[0];
     const reminders = [];
