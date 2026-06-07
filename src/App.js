@@ -351,17 +351,31 @@ export default function App() {
     setManualForm({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
     showToast("✓ Ticket saved!");
   };
-  const getDrawReminders = () => {
-    const day = 1; // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+    const getDrawReminders = () => {
+    const now = new Date();
+    const day = 1;
+    const today = now.toISOString().split("T")[0];
+    const yesterday = new Date(now - 86400000).toISOString().split("T")[0];
     const reminders = [];
-    const pbDays = [1, 3, 6]; // Mon, Wed, Sat
-    const mmDays = [2, 5];    // Tue, Fri
-    if (pbDays.includes(day) && tickets.some(t => t.game === "pb" && t.status === "open")) {
-      reminders.push({ game: "pb", label: "Powerball draws tonight at 10:59pm ET", color: "#e8364a" });
+    const pbDays = [1, 3, 6];
+    const mmDays = [2, 5];
+
+    // No ticket yet — draw is tonight
+    if (pbDays.includes(day) && !tickets.some(t => t.game === "pb" && t.draw_date === today)) {
+      reminders.push({ game: "pb", label: "Powerball draws tonight at 10:59pm ET — you don't have a ticket yet", color: "#e8364a" });
     }
-    if (mmDays.includes(day) && tickets.some(t => t.game === "mm" && t.status === "open")) {
-      reminders.push({ game: "mm", label: "Mega Millions draws tonight at 11:00pm ET", color: "#f5a623" });
+    if (mmDays.includes(day) && !tickets.some(t => t.game === "mm" && t.draw_date === today)) {
+      reminders.push({ game: "mm", label: "Mega Millions draws tonight at 11:00pm ET — you don't have a ticket yet", color: "#f5a623" });
     }
+
+    // Open ticket from yesterday's draw — nudge to check results
+    if (tickets.some(t => t.game === "pb" && t.draw_date === yesterday && t.status === "open")) {
+      reminders.push({ game: "pb", label: "Powerball drew last night — check your tickets", color: "#e8364a" });
+    }
+    if (tickets.some(t => t.game === "mm" && t.draw_date === yesterday && t.status === "open")) {
+      reminders.push({ game: "mm", label: "Mega Millions drew last night — check your tickets", color: "#f5a623" });
+    }
+
     return reminders;
   };
   const filtered = tickets.filter(t => filter==="all" || t.game===filter || (filter==="open" && t.status==="open"));
