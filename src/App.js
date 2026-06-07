@@ -477,18 +477,18 @@ export default function App() {
     <div style={{display:"flex", gap:8, marginBottom:16}}>
       {manualForm.numbers.map((n, i) => (
         <input key={i} style={{width:48, height:48, borderRadius:"50%", background:"#1c1c26", border:"1.5px solid #2a2a38", color:"#f0f0f5", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:14, textAlign:"center", outline:"none"}}
-          type="number" placeholder="—" value={n}
+         type="number" placeholder="—" value={n} min={1} max={manualForm.game === "pb" ? 69 : 70}
           onChange={e => { const nums = [...manualForm.numbers]; nums[i] = e.target.value; setManualForm({...manualForm, numbers: nums}); }} />
       ))}
     </div>
     <div style={S.sectionLabel}>{manualForm.game === "pb" ? "Powerball" : "Mega Ball"}</div>
     <div style={{marginBottom:16}}>
       <input style={{width:48, height:48, borderRadius:"50%", background: manualForm.game==="pb"?"#e8364a":"#f5a623", border:"none", color: manualForm.game==="pb"?"white":"#0a0a0f", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:14, textAlign:"center", outline:"none"}}
-        type="number" placeholder="—" value={manualForm.special}
+        type="number" placeholder="—" value={manualForm.special} min={1} max={manualForm.game === "pb" ? 26 : 25}
         onChange={e => setManualForm({...manualForm, special: e.target.value})} />
     </div>
     <label style={S.formLabel}>Draw Date</label>
-    <input style={S.formInput} type="date" value={manualForm.drawDate} onChange={e => setManualForm({...manualForm, drawDate: e.target.value})} />
+    <input style={S.formInput} type="date" value={manualForm.drawDate} min="2020-01-01" max="2030-12-31" onChange={e => setManualForm({...manualForm, drawDate: e.target.value})} />
     <label style={S.formLabel}>Notes (optional)</label>
     <input style={S.formInput} type="text" placeholder="e.g. corner store ticket..." value={manualForm.notes} onChange={e => setManualForm({...manualForm, notes: e.target.value})} />
     <button style={S.btnSave} onClick={saveManualTicket}>Save Ticket</button>
