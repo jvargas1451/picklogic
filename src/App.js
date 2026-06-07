@@ -308,18 +308,7 @@ export default function App() {
     showToast("✓ Ticket saved!");
   };
 
-  const cycleStatus = async (id) => {
-    const states = ["open","won","lost"];
-    const ticket = tickets.find(t => t.id === id);
-    const newStatus = states[(states.indexOf(ticket.status)+1)%3];
-    const { error } = await supabase.from("tickets").update({ status: newStatus }).eq("id", id);
-    if (!error) {
-      setTickets(tickets.map(t => t.id===id ? {...t, status: newStatus} : t));
-      showToast("Status updated");
-    }
-  };
-
-  const saveTicketEdit = async (id) => {
+    const saveTicketEdit = async (id) => {
     const vals = editValues[id] || {};
     const ticket = tickets.find(t => t.id === id);
     const updates = {
@@ -463,8 +452,7 @@ export default function App() {
                       <div style={S.ticketGame(t.game)}>{GAMES[t.game].name}</div>
                       <div style={S.ticketMeta}>
                         <span style={S.ticketDate}>{t.draw_date ? new Date(t.draw_date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—"}</span>
-                        <span style={S.statusBadge(t.status)} onClick={()=>cycleStatus(t.id)} title="Tap to update status">{t.status.toUpperCase()}</span>
-                      </div>
+                                              </div>
                     </div>
                     <div style={S.tBallsRow}>
                       {t.numbers.map(n=><div key={n} style={S.tBall("main")}>{n}</div>)}
