@@ -351,6 +351,19 @@ export default function App() {
     setManualForm({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
     showToast("✓ Ticket saved!");
   };
+  const getDrawReminders = () => {
+    const day = new Date().getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+    const reminders = [];
+    const pbDays = [1, 3, 6]; // Mon, Wed, Sat
+    const mmDays = [2, 5];    // Tue, Fri
+    if (pbDays.includes(day) && tickets.some(t => t.game === "pb" && t.status === "open")) {
+      reminders.push({ game: "pb", label: "Powerball draws tonight at 10:59pm ET", color: "#e8364a" });
+    }
+    if (mmDays.includes(day) && tickets.some(t => t.game === "mm" && t.status === "open")) {
+      reminders.push({ game: "mm", label: "Mega Millions draws tonight at 11:00pm ET", color: "#f5a623" });
+    }
+    return reminders;
+  };
   const filtered = tickets.filter(t => filter==="all" || t.game===filter || (filter==="open" && t.status==="open"));
 
   const stats = {
@@ -382,7 +395,12 @@ export default function App() {
             <div style={S.logo}><span style={{color:"#f0f0f5"}}>Pick</span><span style={S.logoAccent}>Logic</span></div>
             <button style={S.signOutBtn} onClick={() => supabase.auth.signOut()}>Sign out</button>
           </header>
-
+          {getDrawReminders().map(r => (
+  <div key={r.game} style={{ background: `rgba(${r.game==="pb"?"232,54,74":"245,166,35"},0.1)`, border: `1px solid rgba(${r.game==="pb"?"232,54,74":"245,166,35"},0.3)`, borderRadius: 12, padding: "12px 16px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
+    <span style={{ fontSize: 16 }}>🎟️</span>
+    <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: r.color, fontWeight: 500 }}>{r.label}</span>
+  </div>
+))}
           <nav style={S.nav}>
             {["pick","history","stats"].map((v,i)=>(
               <button key={v} style={S.navBtn(view===v)} onClick={()=>setView(v)}>
