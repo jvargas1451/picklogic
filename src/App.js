@@ -221,6 +221,8 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [expandedTicket, setExpandedTicket] = useState(null);
   const [editValues, setEditValues] = useState({});
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualForm, setManualForm] = useState({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -324,7 +326,31 @@ export default function App() {
       showToast("Ticket updated");
     }
   };
-
+    const saveManualTicket = async () => {
+    const nums = manualForm.numbers.map(n => parseInt(n)).filter(n => !isNaN(n));
+    const special = parseInt(manualForm.special);
+    const g = GAMES[manualForm.game];
+    if (nums.length !== 5) { showToast("Enter all 5 main numbers"); return; }
+    if (isNaN(special)) { showToast("Enter the " + (manualForm.game === "pb" ? "Powerball" : "Mega Ball")); return; }
+    if (nums.some(n => n < g.main[0] || n > g.main[1])) { showToast("Main numbers out of range"); return; }
+    if (new Set(nums).size !== 5) { showToast("Numbers must be unique"); return; }
+    if (special < g.special[0] || special > g.special[1]) { showToast("Special ball out of range"); return; }
+    const { data, error } = await supabase.from("tickets").insert({
+      user_id: session.user.id,
+      game: manualForm.game,
+      numbers: nums.sort((a,b) => a-b),
+      special,
+      pick_mode: "manual",
+      draw_date: manualForm.drawDate || null,
+      notes: manualForm.notes || null,
+      stake: 0, payout: 0, status: "open",
+    }).select().single();
+    if (error) { showToast("Error saving ticket"); return; }
+    setTickets([data, ...tickets]);
+    setShowManualEntry(false);
+    setManualForm({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
+    showToast("✓ Ticket saved!");
+  };
   const filtered = tickets.filter(t => filter==="all" || t.game===filter || (filter==="open" && t.status==="open"));
 
   const stats = {
@@ -430,9 +456,44 @@ export default function App() {
           {view==="history" && (
             <div>
               <div style={S.histHeader}>
-                <div style={S.histTitle}>My Tickets</div>
-                <div style={S.ticketCount}>{tickets.length} ticket{tickets.length!==1?"s":""}</div>
-              </div>
+  <div style={S.histTitle}>My Tickets</div>
+  <div style={S.ticketCount}>{tickets.length} ticket{tickets.length!==1?"s":""}</div>
+</div>
+<button style={{...S.btnSecondary, marginBottom: 16}} onClick={() => setShowManualEntry(!showManualEntry)}>
+  {showManualEntry ? "Cancel" : "+ Enter Ticket Manually"}
+</button>
+{showManualEntry && (
+  <div style={S.saveForm}>
+    <div style={S.sectionLabel}>Game</div>
+    <div style={{display:"flex", gap:8, marginBottom:16}}>
+      {["pb","mm"].map(key => (
+        <button key={key} style={{flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${manualForm.game===key?(key==="pb"?"#e8364a":"#f5a623"):"#2a2a38"}`, background: manualForm.game===key?"#1c1c26":"transparent", color: manualForm.game===key?(key==="pb"?"#e8364a":"#f5a623"):"#6b6b82", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:13, cursor:"pointer"}}
+          onClick={() => setManualForm({...manualForm, game: key})}>
+          {GAMES[key].name}
+        </button>
+      ))}
+    </div>
+    <div style={S.sectionLabel}>Main Numbers (pick 5)</div>
+    <div style={{display:"flex", gap:8, marginBottom:16}}>
+      {manualForm.numbers.map((n, i) => (
+        <input key={i} style={{width:48, height:48, borderRadius:"50%", background:"#1c1c26", border:"1.5px solid #2a2a38", color:"#f0f0f5", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:14, textAlign:"center", outline:"none"}}
+          type="number" placeholder="—" value={n}
+          onChange={e => { const nums = [...manualForm.numbers]; nums[i] = e.target.value; setManualForm({...manualForm, numbers: nums}); }} />
+      ))}
+    </div>
+    <div style={S.sectionLabel}>{manualForm.game === "pb" ? "Powerball" : "Mega Ball"}</div>
+    <div style={{marginBottom:16}}>
+      <input style={{width:48, height:48, borderRadius:"50%", background: manualForm.game==="pb"?"#e8364a":"#f5a623", border:"none", color: manualForm.game==="pb"?"white":"#0a0a0f", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:14, textAlign:"center", outline:"none"}}
+        type="number" placeholder="—" value={manualForm.special}
+        onChange={e => setManualForm({...manualForm, special: e.target.value})} />
+    </div>
+    <label style={S.formLabel}>Draw Date</label>
+    <input style={S.formInput} type="date" value={manualForm.drawDate} onChange={e => setManualForm({...manualForm, drawDate: e.target.value})} />
+    <label style={S.formLabel}>Notes (optional)</label>
+    <input style={S.formInput} type="text" placeholder="e.g. corner store ticket..." value={manualForm.notes} onChange={e => setManualForm({...manualForm, notes: e.target.value})} />
+    <button style={S.btnSave} onClick={saveManualTicket}>Save Ticket</button>
+  </div>
+)}
               <div style={S.filterRow}>
                 {[["all","All"],["pb","Powerball"],["mm","Mega Millions"],["open","Open"]].map(([key,label])=>(
                   <button key={key} style={S.filterBtn(filter===key)} onClick={()=>setFilter(key)}>{label}</button>
