@@ -28,10 +28,12 @@ function pickUnique(count, min, max, weights) {
       const w = remaining.map((n) => weights[n] || 1);
       const total = w.reduce((a, b) => a + b, 0);
       let r = Math.random() * total, cum = 0;
+      let picked = false;
       for (let j = 0; j < remaining.length; j++) {
         cum += w[j];
-        if (r <= cum) { nums.push(remaining[j]); break; }
+        if (r <= cum) { nums.push(remaining[j]); picked = true; break; }
       }
+      if (!picked) nums.push(remaining[remaining.length - 1]);
     }
   } else {
     while (nums.length < count) {
