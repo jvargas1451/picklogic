@@ -40,24 +40,38 @@ function toInt(n) {
   return typeof n === "number" ? n : parseInt(n, 10);
 }
 
-async function settleTickets(draw) {
-  const drawNumbers = (draw.numbers || []).map(toInt);
-  const drawSpecial = toInt(draw.special);
-
-  const { data: openTickets, error: selectError } = await supabase
+async function settleOpenTickets() {
+  const { data: openTickets, error: ticketError } = await supabase
     .from("tickets")
-    .select("id, numbers, special")
-    .eq("game", draw.game)
-    .eq("draw_date", draw.draw_date)
+    .select("id, game, draw_date, numbers, special")
     .eq("status", "open");
 
-  if (selectError) {
-    console.error("Ticket select error:", selectError.message);
+  if (ticketError) {
+    console.error("Ticket select error:", ticketError.message);
+    return 0;
+  }
+  if (!openTickets || openTickets.length === 0) return 0;
+
+  const { data: draws, error: drawsError } = await supabase
+    .from("draws")
+    .select("game, draw_date, numbers, special");
+
+  if (drawsError) {
+    console.error("Draws select error:", drawsError.message);
     return 0;
   }
 
+  const drawByKey = new Map(
+    (draws ?? []).map((d) => [`${d.game}_${d.draw_date}`, d])
+  );
+
   let settled = 0;
-  for (const ticket of openTickets ?? []) {
+  for (const ticket of openTickets) {
+    const draw = drawByKey.get(`${ticket.game}_${ticket.draw_date}`);
+    if (!draw) continue;
+
+    const drawNumbers = (draw.numbers || []).map(toInt);
+    const drawSpecial = toInt(draw.special);
     const matchedMain = (ticket.numbers ?? []).filter((n) =>
       drawNumbers.includes(toInt(n))
     ).length;
@@ -90,7 +104,6 @@ Deno.serve(async (req) => {
   const results = await Promise.all(GAMES.map(fetchLatestDraw));
 
   const saved = [];
-  let settled = 0;
 
   for (const draw of results) {
     if (!draw) continue;
@@ -106,8 +119,9 @@ Deno.serve(async (req) => {
 
     console.log(`Saved: ${draw.game} ${draw.draw_date}`);
     saved.push(`${draw.game} ${draw.draw_date}`);
-    settled += await settleTickets(draw);
   }
+
+  const settled = await settleOpenTickets();
 
   return new Response(JSON.stringify({ ok: true, saved, settled }), {
     headers: { "Content-Type": "application/json" },
