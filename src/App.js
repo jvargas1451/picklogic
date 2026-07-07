@@ -313,9 +313,14 @@ export default function App() {
     const saveTicketEdit = async (id) => {
     const vals = editValues[id] || {};
     const ticket = tickets.find(t => t.id === id);
+    const parseOrKeep = (val, fallback) => {
+      if (val === undefined) return fallback;
+      const parsed = parseFloat(val);
+      return isNaN(parsed) ? fallback : parsed;
+    };
     const updates = {
-      stake: parseFloat(vals.stake) || ticket.stake || 0,
-      payout: parseFloat(vals.payout) || ticket.payout || 0,
+      stake: parseOrKeep(vals.stake, ticket.stake || 0),
+      payout: parseOrKeep(vals.payout, ticket.payout || 0),
       notes: vals.notes !== undefined ? vals.notes : ticket.notes,
     };
     const { error } = await supabase.from("tickets").update(updates).eq("id", id);
