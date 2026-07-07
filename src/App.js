@@ -354,8 +354,14 @@ export default function App() {
     const getDrawReminders = () => {
     const now = new Date();
     const day = now.getDay();
-    const today = now.toISOString().split("T")[0];
-    const yesterday = new Date(now - 86400000).toISOString().split("T")[0];
+    const toLocalDateString = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${dd}`;
+    };
+    const today = toLocalDateString(now);
+    const yesterday = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
     const reminders = [];
     const pbDays = [1, 3, 6];
     const mmDays = [2, 5];
