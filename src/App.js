@@ -384,7 +384,7 @@ export default function App() {
     total: tickets.length,
     wins: tickets.filter(t=>t.status==="won").length,
     spent: tickets.reduce((s,t)=>s+(t.stake||0),0),
-    net: tickets.filter(t=>t.status==="won").reduce((s,t)=>s+(t.payout||0),0) - tickets.reduce((s,t)=>s+(t.stake||0),0),
+    net: tickets.reduce((s,t)=>s+(t.payout||0),0) - tickets.reduce((s,t)=>s+(t.stake||0),0),
   };
 
   const freq = {};
