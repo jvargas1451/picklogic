@@ -50,7 +50,16 @@ What it does per invocation:
 2. Settlement sweep: ALL tickets with status='open' that have a matching draws row (game + draw_date)
    are settled won/lost. Win rule: matchedSpecial OR matchedMain >= 3 (mirrors `checkResult()` in App.js —
    keep these two in sync if prize tiers ever change).
-3. Returns honest body: `{ ok, saved: [...], settled: <count> }`.
+3. Same sweep also awards match-tier gamification points via the `award_points` RPC (service-role
+   only), reusing the matchedMain/matchedSpecial already computed for the win rule. Tiers, first
+   match wins: `jackpot` (5 main + special), `match_3plus` (3-4 main), `match_any` (1-2 main OR
+   special only — this deliberately includes losing near-miss tickets). A per-ticket award failure
+   is logged and does not abort the sweep or the ticket's won/lost settlement.
+4. Returns honest body: `{ ok, saved: [...], settled: <count>, awarded: <count> }`.
+
+SYNC NOTE: THREE places interpret match results and must move together if prize tiers change:
+`checkResult()` in App.js (display badge), the win rule in bright-api (won/lost status), and the
+tier ladder in bright-api (points). `match_any` intentionally overlaps with losing tickets.
 
 Auth: requires header `x-cron-secret` matching secret `CRON_SECRET`; 401 otherwise (fails closed if secret unset).
 Testing from the dashboard test panel requires adding that header manually.

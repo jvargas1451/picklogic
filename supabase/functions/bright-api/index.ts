@@ -40,17 +40,24 @@ function toInt(n) {
   return typeof n === "number" ? n : parseInt(n, 10);
 }
 
+function matchTier(matchedMain, matchedSpecial) {
+  if (matchedMain === 5 && matchedSpecial) return "jackpot";
+  if (matchedMain >= 3) return "match_3plus";
+  if (matchedMain >= 1 || matchedSpecial) return "match_any";
+  return null;
+}
+
 async function settleOpenTickets() {
   const { data: openTickets, error: ticketError } = await supabase
     .from("tickets")
-    .select("id, game, draw_date, numbers, special")
+    .select("id, user_id, game, draw_date, numbers, special")
     .eq("status", "open");
 
   if (ticketError) {
     console.error("Ticket select error:", ticketError.message);
-    return 0;
+    return { settled: 0, awarded: 0 };
   }
-  if (!openTickets || openTickets.length === 0) return 0;
+  if (!openTickets || openTickets.length === 0) return { settled: 0, awarded: 0 };
 
   const { data: draws, error: drawsError } = await supabase
     .from("draws")
@@ -58,7 +65,7 @@ async function settleOpenTickets() {
 
   if (drawsError) {
     console.error("Draws select error:", drawsError.message);
-    return 0;
+    return { settled: 0, awarded: 0 };
   }
 
   const drawByKey = new Map(
@@ -66,6 +73,7 @@ async function settleOpenTickets() {
   );
 
   let settled = 0;
+  let awarded = 0;
   for (const ticket of openTickets) {
     const draw = drawByKey.get(`${ticket.game}_${ticket.draw_date}`);
     if (!draw) continue;
@@ -85,12 +93,27 @@ async function settleOpenTickets() {
 
     if (updateError) {
       console.error(`Settle error for ticket ${ticket.id}:`, updateError.message);
+      continue;
+    }
+    settled++;
+
+    const tier = matchTier(matchedMain, matchedSpecial);
+    if (!tier) continue;
+
+    const { error: awardError } = await supabase.rpc("award_points", {
+      p_user_id: ticket.user_id,
+      p_event_type: tier,
+      p_ref_id: `${ticket.id}`,
+    });
+
+    if (awardError) {
+      console.error(`Award error for ticket ${ticket.id}:`, awardError.message);
     } else {
-      settled++;
+      awarded++;
     }
   }
 
-  return settled;
+  return { settled, awarded };
 }
 
 Deno.serve(async (req) => {
@@ -121,9 +144,9 @@ Deno.serve(async (req) => {
     saved.push(`${draw.game} ${draw.draw_date}`);
   }
 
-  const settled = await settleOpenTickets();
+  const { settled, awarded } = await settleOpenTickets();
 
-  return new Response(JSON.stringify({ ok: true, saved, settled }), {
+  return new Response(JSON.stringify({ ok: true, saved, settled, awarded }), {
     headers: { "Content-Type": "application/json" },
   });
 });
