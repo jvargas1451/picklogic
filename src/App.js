@@ -99,6 +99,10 @@ const S = {
   usernameInput: { flex: 1, padding: "10px 12px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: 13, outline: "none" },
   usernameSaveBtn: { padding: "10px 16px", borderRadius: 10, border: "none", background: "#7c6aff", color: "white", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer" },
   usernameCancelBtn: { padding: "10px 14px", borderRadius: 10, border: "1px solid #2a2a38", background: "transparent", color: "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: 12, cursor: "pointer" },
+  leaderboardRow: (highlight) => ({ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 14, border: `1px solid ${highlight ? "rgba(124,106,255,0.4)" : "#2a2a38"}`, background: highlight ? "rgba(124,106,255,0.1)" : "#13131a", marginBottom: 8 }),
+  leaderboardRank: { fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#6b6b82", width: 32 },
+  leaderboardUsername: { flex: 1, fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 14, color: "#f0f0f5" },
+  leaderboardPoints: { fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#7c6aff", fontWeight: 600 },
   gameCard: (active, type) => ({ padding: "18px 16px", borderRadius: 16, border: `2px solid ${active ? (type === "pb" ? "#e8364a" : "#f5a623") : "#2a2a38"}`, background: "#13131a", cursor: "pointer", transition: "all 0.2s", boxShadow: active ? `0 0 24px ${type === "pb" ? "rgba(232,54,74,0.15)" : "rgba(245,166,35,0.15)"}` : "none" }),
   gameName: (type) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: type === "pb" ? "#e8364a" : "#f5a623", marginBottom: 4 }),
   gameOdds: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82" },
@@ -241,6 +245,8 @@ export default function App() {
   const [usernameInput, setUsernameInput] = useState("");
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameSaving, setUsernameSaving] = useState(false);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [myRank, setMyRank] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -308,6 +314,23 @@ export default function App() {
     setUsernameInput("");
     showToast("Username saved!");
   };
+
+  const loadLeaderboard = useCallback(async () => {
+    const { data, error } = await supabase.from("leaderboard").select("*").limit(25);
+    const rows = error ? [] : (data || []);
+    setLeaderboard(rows);
+    if (username && !rows.some(r => r.username === username)) {
+      const { data: mine, error: mineError } = await supabase
+        .from("leaderboard").select("*").eq("username", username).single();
+      setMyRank(!mineError && mine ? mine : null);
+    } else {
+      setMyRank(null);
+    }
+  }, [username]);
+
+  useEffect(() => {
+    if (view === "leaderboard" && session) loadLeaderboard();
+  }, [view, session, loadLeaderboard]);
 
   const handleCheckIn = async () => {
     setCheckinLoading(true);
@@ -498,9 +521,9 @@ export default function App() {
   </div>
 ))}
           <nav style={S.nav}>
-            {["pick","history","stats"].map((v,i)=>(
+            {["pick","history","stats","leaderboard"].map((v,i)=>(
               <button key={v} style={S.navBtn(view===v)} onClick={()=>setView(v)}>
-                {["Quick Pick","My Tickets","Stats"][i]}
+                {["Quick Pick","My Tickets","Stats","Leaderboard"][i]}
               </button>
             ))}
           </nav>
@@ -714,6 +737,42 @@ export default function App() {
               <div style={{...S.disclaimer, marginTop:32}}>
                 <div style={S.disclaimerText}>Stats are based on your saved tickets only. Frequency tracking is for personal interest — it does not affect future lottery draws.</div>
               </div>
+            </div>
+          )}
+
+          {view==="leaderboard" && (
+            <div>
+              <div style={S.histHeader}>
+                <div style={S.histTitle}>Leaderboard</div>
+              </div>
+              {leaderboard.length===0 ? (
+                <div style={S.emptyState}>
+                  <div style={{fontSize:40,marginBottom:16,opacity:0.3}}>🏆</div>
+                  <div style={S.emptyStateTitle}>No players yet — set a username to be first.</div>
+                </div>
+              ) : (
+                <>
+                  {leaderboard.map(row => (
+                    <div key={row.username} style={S.leaderboardRow(row.username === username)}>
+                      <div style={S.leaderboardRank}>#{row.rank}</div>
+                      <div style={S.leaderboardUsername}>{row.username}</div>
+                      <div style={S.leaderboardPoints}>{row.points} pts</div>
+                    </div>
+                  ))}
+                  {myRank && (
+                    <div style={{...S.leaderboardRow(true), marginTop:16}}>
+                      <div style={S.leaderboardRank}>#{myRank.rank}</div>
+                      <div style={S.leaderboardUsername}>Your rank: {myRank.username}</div>
+                      <div style={S.leaderboardPoints}>{myRank.points} pts</div>
+                    </div>
+                  )}
+                  {!username && (
+                    <div style={{...S.disclaimer, marginTop:20}}>
+                      <div style={S.disclaimerText}>Set a username to join the leaderboard.</div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
