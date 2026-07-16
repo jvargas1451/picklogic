@@ -5,7 +5,7 @@ The Technical Master Plan and Orientation Reference (docx) hold strategy and rat
 this file holds facts. When they conflict, this file wins. Update this file at the end
 of any session that changes architecture, schema, secrets, or workflows.
 
-Last updated: 2026-07-15 (cron 401 root-caused and fixed: verify_jwt disabled for bright-api)
+Last updated: 2026-07-15 (cron auth fix confirmed + verified; gamification tasks 2–5 complete)
 
 ## What this is
 
@@ -37,8 +37,15 @@ get results checked automatically. Entertainment tool — never claim improved o
 - **profiles** — id (PK, FK auth.users, cascade), username (text, unique, nullable), points (int, default 0), created_at.
   Created by trigger on auth.users insert; existing users backfilled.
   RLS: public SELECT (leaderboard requirement); INSERT/UPDATE owner-only.
-  `points` is server-authoritative: a BEFORE UPDATE trigger reverts points changes unless caller is service_role.
-  Clients can set username; only edge functions can move points.
+  `points` is server-authoritative: the `protect_profile_points` BEFORE UPDATE trigger reverts
+  points changes unless the caller is service_role OR `current_user = 'postgres'` (the
+  SECURITY DEFINER path used by `award_points`). Clients can set username; client forgery of
+  points is still blocked either way.
+- **point_events** — ledger of awarded points: user_id, event_type, ref_id, points, created_at.
+  Dedup unique index on (user_id, event_type, ref_id) — makes awarding idempotent.
+- **point_values** — lookup table, event_type → points: save_ticket 5, checkin 10, match_any 20,
+  match_3plus 50, jackpot 1000. Looked up server-side inside `award_points`, not hardcoded per caller.
+- **leaderboard** view — `security_invoker`, built on profiles for public display.
 
 ## Edge function: bright-api (display name "fetch-draw-results")
 
@@ -50,30 +57,40 @@ What it does per invocation:
 2. Settlement sweep: ALL tickets with status='open' that have a matching draws row (game + draw_date)
    are settled won/lost. Win rule: matchedSpecial OR matchedMain >= 3 (mirrors `checkResult()` in App.js —
    keep these two in sync if prize tiers ever change).
-3. Same sweep also awards match-tier gamification points via the `award_points` RPC (service-role
-   only), reusing the matchedMain/matchedSpecial already computed for the win rule. Tiers, first
-   match wins: `jackpot` (5 main + special), `match_3plus` (3-4 main), `match_any` (1-2 main OR
-   special only — this deliberately includes losing near-miss tickets). A per-ticket award failure
-   is logged and does not abort the sweep or the ticket's won/lost settlement.
+3. Same sweep also awards match-tier gamification points via the `award_points(user_id, event_type,
+   ref_id)` RPC — a SECURITY DEFINER choke-point that looks up the point value server-side
+   (from `point_values`) and is idempotent via the point_events dedup index; it is the ONLY path
+   allowed to move points. Non-stacking ladder, one tier per ticket, first match wins: `jackpot`
+   (5 main + special) > `match_3plus` (3-4 main) > `match_any` (any match at all, main or special —
+   this deliberately includes losing near-miss tickets, a product decision). A per-ticket award
+   failure is logged and does not abort the sweep or the ticket's won/lost settlement.
 4. Returns honest body: `{ ok, saved: [...], settled: <count>, awarded: <count> }`.
+
+Separately, an AFTER INSERT trigger on `tickets` awards the `save_ticket` event (5 pts) on every
+ticket insert, including manual entry — not just app-flow saves.
 
 SYNC NOTE: THREE places interpret match results and must move together if prize tiers change:
 `checkResult()` in App.js (display badge), the win rule in bright-api (won/lost status), and the
 tier ladder in bright-api (points). `match_any` intentionally overlaps with losing tickets.
 
-Auth: requires header `x-cron-secret` matching secret `CRON_SECRET`; 401 otherwise (fails closed if secret unset).
-Testing from the dashboard test panel requires adding that header manually.
+Gamification tasks 2–5 (schema, award_points choke-point, save_ticket trigger, settlement-tier
+awarding) are COMPLETE and verified in production as of 2026-07-15.
 
-Cron: 4am UTC after draw nights, via pg_net `net.http_post`. The cron SQL sends the x-cron-secret
-header. Draw days: Powerball Mon/Wed/Sat, Mega Millions Tue/Fri.
+Auth: `x-cron-secret` (matching secret `CRON_SECRET`) is the SOLE auth layer for bright-api;
+401 otherwise (fails closed if secret unset). Dashboard test panel requires adding that header
+manually — the value lives in the cron.job command (`cron.job` table, not a secret you can view
+via the dashboard's Secrets page).
 
-Cron 401 root cause (found 2026-07-15): the historical 401s were the platform's JWT verification
-gate rejecting a stray `Authorization` header the cron SQL was also sending — that header carried
-the lottery API token, not a Supabase JWT, so the gate failed it before the request ever reached
-function code. Fixed by disabling `verify_jwt` for bright-api (both the dashboard toggle and a
-pin in `supabase/config.toml`) and removing the Authorization header from the cron SQL.
-`x-cron-secret` remains the sole auth layer for this function; config.toml pin was added but not
-redeployed as part of this fix.
+Cron: 4am UTC after draw nights, via pg_net `net.http_post`. Draw days: Powerball Mon/Wed/Sat,
+Mega Millions Tue/Fri. Job: jobid 1, name "fetch-draw-results", schedule `0 4 * * 1,2,3,4,6`.
+Confirmed firing on schedule (pg_net working) as of 2026-07-15.
+
+Cron 401 root cause (found 2026-07-13/15): the historical 401s were the platform's JWT
+verification gate rejecting a stray `Authorization` header the cron SQL was also sending — that
+header carried the lottery API token, not a Supabase JWT, so the gate failed it before the
+request ever reached function code. Fixed by (1) disabling `verify_jwt` for bright-api, both the
+dashboard toggle and a pin in `supabase/config.toml`, and (2) removing the Authorization header
+from the cron job via `cron.alter_job`.
 
 ## Secrets (Supabase → Edge Functions → Secrets)
 
@@ -82,6 +99,14 @@ redeployed as part of this fix.
 - `CRON_SECRET` — invocation auth; same value lives in the cron job's x-cron-secret header
 
 Rules: never hardcode secrets in source; never print secret values in sessions; anon key is fine in frontend.
+
+## Operational notes
+
+- Testing gamification/settlement flows pollutes J's own points. Standard post-test cleanup:
+  zero `profiles.points` for J's account + delete `point_events` rows by J's email.
+- Missed cron nights create permanent draw gaps — the function only fetches the latest draw per
+  game, it doesn't backfill. Open tickets behind a gap never settle on their own (see backlog:
+  "backfill missing draws" capability). June-era relic tickets caught by an old gap were deleted.
 
 ## Frontend logic worth knowing (src/App.js)
 
@@ -106,13 +131,20 @@ Rules: never hardcode secrets in source; never print secret values in sessions; 
 ## Current status & next up
 
 Done: auth, tickets CRUD + RLS, manual entry, auto result fetching + server-side settlement,
-in-app draw reminders, secured edge function, profiles/username groundwork.
+in-app draw reminders, secured edge function, profiles/username groundwork, cron auth fixed and
+confirmed firing, gamification tasks 2–5 (ledger/schema, award_points choke-point, save_ticket
+trigger, settlement-tier point awarding) complete and verified in production.
 
-Open loop: first honest cron verification — check bright-api Invocations tab for a ~04:00 UTC entry
-that succeeds now that the JWT-gate 401 is fixed (next expected: after the next scheduled draw).
+Next up: task 6 (explicit check-in button), task 6.5 (per-ticket points display on ticket cards —
+added to the gamification plan), task 7 (leaderboard UI), then username-setting UI if not already
+covered.
 
-Next phase: **Gamification** (fresh chat). Remaining schema: `point_events` table + leaderboard view.
-Point events (planned): save ticket, draw-day check-in, any match, match 3+, jackpot bonus.
-Points must be awarded server-side (settlement hook in bright-api is the natural place).
-Backlog after that: multi-ticket quick pick, spending tracker, syndicate tracking, Stripe paywall.
+Backlog (do not build now):
+- `draws.draw_date` is TEXT; migrate to a real `date` type (joins currently need casts)
+- Manual entry accepts invalid dates (year 0001 got through — the HTML date input's `min` doesn't
+  block typed input); add validation in `saveManualTicket`
+- Warn on tickets saved for non-draw-days
+- "Backfill missing draws" capability, for recovering from cron/outage gaps (see Operational notes)
+
+Later backlog: multi-ticket quick pick, spending tracker, syndicate tracking, Stripe paywall.
 Email reminders (Resend) deliberately deferred — resume before Stripe phase.
