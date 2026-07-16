@@ -129,6 +129,7 @@ const S = {
   ticketDate: { fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#6b6b82" },
   statusBadge: (s) => ({ fontFamily: "'DM Mono', monospace", fontSize: 10, padding: "3px 8px", borderRadius: 10, letterSpacing: 0.5, textTransform: "uppercase", cursor: "pointer", background: s === "won" ? "rgba(62,207,142,0.15)" : s === "lost" ? "rgba(232,54,74,0.1)" : "rgba(107,107,130,0.2)", color: s === "won" ? "#3ecf8e" : s === "lost" ? "#e8364a" : "#6b6b82", border: `1px solid ${s === "won" ? "rgba(62,207,142,0.3)" : s === "lost" ? "rgba(232,54,74,0.2)" : "#2a2a38"}` }),
   resultBadge: (r) => ({ display: "inline-block", fontFamily: "'DM Mono', monospace", fontSize: 10, padding: "4px 10px", borderRadius: 10, letterSpacing: 0.5, marginTop: 10, background: r.bg, color: r.color, border: `1px solid ${r.border}` }),
+  pointsBadge: { display: "inline-block", fontFamily: "'DM Mono', monospace", fontSize: 10, padding: "4px 10px", borderRadius: 10, letterSpacing: 0.5, marginTop: 10, marginLeft: 8, background: "rgba(124,106,255,0.15)", color: "#7c6aff", border: "1px solid rgba(124,106,255,0.3)" },
   tBallsRow: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
   tBall: (type) => ({ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, background: type === "main" ? "#1c1c26" : type === "pb" ? "#e8364a" : "#f5a623", border: type === "main" ? "1.5px solid #2a2a38" : "none", color: type === "mm" ? "#0a0a0f" : "#f0f0f5" }),
   ticketNotes: { marginTop: 10, fontSize: 12, color: "#6b6b82", fontStyle: "italic" },
@@ -228,6 +229,7 @@ export default function App() {
   const [manualForm, setManualForm] = useState({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
   const [checkinClaimed, setCheckinClaimed] = useState(false);
   const [checkinLoading, setCheckinLoading] = useState(false);
+  const [matchPoints, setMatchPoints] = useState({});
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -245,6 +247,15 @@ export default function App() {
     const { data, error } = await supabase
       .from("tickets").select("*").order("created_at", { ascending: false });
     if (!error) setTickets(data || []);
+
+    const { data: pointsData, error: pointsError } = await supabase
+      .from("point_events").select("ref_id, event_type, points")
+      .in("event_type", ["match_any", "match_3plus", "jackpot"]);
+    if (!pointsError) {
+      const lookup = {};
+      (pointsData || []).forEach(p => { lookup[String(p.ref_id)] = p.points; });
+      setMatchPoints(lookup);
+    }
   }, []);
 
   const loadCheckinStatus = useCallback(async () => {
@@ -257,7 +268,7 @@ export default function App() {
 
   useEffect(() => {
     if (session) { loadTickets(); loadCheckinStatus(); }
-    else { setTickets([]); setCheckinClaimed(false); }
+    else { setTickets([]); setCheckinClaimed(false); setMatchPoints({}); }
   }, [session, loadTickets, loadCheckinStatus]);
 
   const handleCheckIn = async () => {
@@ -589,6 +600,7 @@ export default function App() {
                       <div style={S.tBall(t.game)}>{t.special}</div>
                     </div>
                     {result && <div style={S.resultBadge(result)}>{result.label}</div>}
+                    {matchPoints[String(t.id)] !== undefined && <div style={S.pointsBadge}>+{matchPoints[String(t.id)]} pts</div>}
                     {t.notes && <div style={S.ticketNotes}>{t.notes}</div>}
                     {expandedTicket === t.id ? (
                       <div style={S.ticketEditRow}>
