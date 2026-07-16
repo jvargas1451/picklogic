@@ -92,6 +92,13 @@ const S = {
   sectionLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12 },
   gameGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 28 },
   checkinBtn: (claimed) => ({ width: "100%", padding: 14, borderRadius: 14, border: `1px solid ${claimed ? "#2a2a38" : "rgba(124,106,255,0.4)"}`, background: claimed ? "transparent" : "rgba(124,106,255,0.15)", color: claimed ? "#6b6b82" : "#7c6aff", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, cursor: claimed ? "default" : "pointer", marginBottom: 20, transition: "all 0.2s" }),
+  usernameRow: { display: "flex", alignItems: "center", justifyContent: "space-between", background: "#13131a", border: "1px solid #2a2a38", borderRadius: 14, padding: "12px 16px", marginBottom: 12 },
+  usernameText: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: "#f0f0f5" },
+  usernameEditLink: { fontSize: 11, color: "#6b6b82", background: "transparent", border: "1px solid #2a2a38", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" },
+  usernameSetRow: { display: "flex", gap: 8, marginBottom: 12 },
+  usernameInput: { flex: 1, padding: "10px 12px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: 13, outline: "none" },
+  usernameSaveBtn: { padding: "10px 16px", borderRadius: 10, border: "none", background: "#7c6aff", color: "white", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  usernameCancelBtn: { padding: "10px 14px", borderRadius: 10, border: "1px solid #2a2a38", background: "transparent", color: "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: 12, cursor: "pointer" },
   gameCard: (active, type) => ({ padding: "18px 16px", borderRadius: 16, border: `2px solid ${active ? (type === "pb" ? "#e8364a" : "#f5a623") : "#2a2a38"}`, background: "#13131a", cursor: "pointer", transition: "all 0.2s", boxShadow: active ? `0 0 24px ${type === "pb" ? "rgba(232,54,74,0.15)" : "rgba(245,166,35,0.15)"}` : "none" }),
   gameName: (type) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: type === "pb" ? "#e8364a" : "#f5a623", marginBottom: 4 }),
   gameOdds: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82" },
@@ -230,6 +237,10 @@ export default function App() {
   const [checkinClaimed, setCheckinClaimed] = useState(false);
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [matchPoints, setMatchPoints] = useState({});
+  const [username, setUsername] = useState(null);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [usernameSaving, setUsernameSaving] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -266,10 +277,37 @@ export default function App() {
     if (!error) setCheckinClaimed((data || []).length > 0);
   }, []);
 
+  const loadProfile = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("profiles").select("username").eq("id", session.user.id).single();
+    if (!error) setUsername(data?.username || null);
+  }, [session]);
+
   useEffect(() => {
-    if (session) { loadTickets(); loadCheckinStatus(); }
-    else { setTickets([]); setCheckinClaimed(false); setMatchPoints({}); }
-  }, [session, loadTickets, loadCheckinStatus]);
+    if (session) { loadTickets(); loadCheckinStatus(); loadProfile(); }
+    else { setTickets([]); setCheckinClaimed(false); setMatchPoints({}); setUsername(null); }
+  }, [session, loadTickets, loadCheckinStatus, loadProfile]);
+
+  const saveUsername = async () => {
+    const trimmed = usernameInput.trim();
+    if (!/^[A-Za-z0-9_]{3,20}$/.test(trimmed)) {
+      showToast("Username must be 3-20 letters, numbers, or underscores");
+      return;
+    }
+    setUsernameSaving(true);
+    const { error } = await supabase.from("profiles").update({ username: trimmed }).eq("id", session.user.id);
+    setUsernameSaving(false);
+    if (error) {
+      if (error.code === "23505") showToast("That username is taken");
+      else if (error.code === "23514") showToast("Username must be 3-20 letters, numbers, or underscores");
+      else showToast("Error saving username");
+      return;
+    }
+    setUsername(trimmed);
+    setEditingUsername(false);
+    setUsernameInput("");
+    showToast("Username saved!");
+  };
 
   const handleCheckIn = async () => {
     setCheckinLoading(true);
@@ -480,6 +518,23 @@ export default function App() {
                   </div>
                 ))}
               </div>
+              {username && !editingUsername && (
+                <div style={S.usernameRow}>
+                  <div style={S.usernameText}>@{username}</div>
+                  <button style={S.usernameEditLink} onClick={()=>{setEditingUsername(true);setUsernameInput(username);}}>Edit</button>
+                </div>
+              )}
+              {(!username || editingUsername) && (
+                <div style={S.usernameSetRow}>
+                  <input style={S.usernameInput} type="text" placeholder="Set a username" value={usernameInput}
+                    onChange={e=>setUsernameInput(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter" && saveUsername()} />
+                  <button style={S.usernameSaveBtn} onClick={saveUsername} disabled={usernameSaving}>Save</button>
+                  {editingUsername && (
+                    <button style={S.usernameCancelBtn} onClick={()=>{setEditingUsername(false);setUsernameInput("");}}>Cancel</button>
+                  )}
+                </div>
+              )}
               <button style={S.checkinBtn(checkinClaimed)} disabled={checkinClaimed || checkinLoading} onClick={handleCheckIn}>
                 {checkinClaimed ? "Checked in today ✓" : "Check in · +10 pts"}
               </button>
