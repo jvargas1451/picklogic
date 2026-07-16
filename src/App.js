@@ -91,6 +91,7 @@ const S = {
   navBtn: (active) => ({ flex: 1, padding: 10, border: "none", background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, borderRadius: 10, cursor: "pointer", transition: "all 0.2s" }),
   sectionLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12 },
   gameGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 28 },
+  checkinBtn: (claimed) => ({ width: "100%", padding: 14, borderRadius: 14, border: `1px solid ${claimed ? "#2a2a38" : "rgba(124,106,255,0.4)"}`, background: claimed ? "transparent" : "rgba(124,106,255,0.15)", color: claimed ? "#6b6b82" : "#7c6aff", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, cursor: claimed ? "default" : "pointer", marginBottom: 20, transition: "all 0.2s" }),
   gameCard: (active, type) => ({ padding: "18px 16px", borderRadius: 16, border: `2px solid ${active ? (type === "pb" ? "#e8364a" : "#f5a623") : "#2a2a38"}`, background: "#13131a", cursor: "pointer", transition: "all 0.2s", boxShadow: active ? `0 0 24px ${type === "pb" ? "rgba(232,54,74,0.15)" : "rgba(245,166,35,0.15)"}` : "none" }),
   gameName: (type) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: type === "pb" ? "#e8364a" : "#f5a623", marginBottom: 4 }),
   gameOdds: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82" },
@@ -225,6 +226,8 @@ export default function App() {
   const [editValues, setEditValues] = useState({});
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualForm, setManualForm] = useState({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
+  const [checkinClaimed, setCheckinClaimed] = useState(false);
+  const [checkinLoading, setCheckinLoading] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -239,14 +242,32 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (session) loadTickets();
-    else setTickets([]);
+    if (session) { loadTickets(); loadCheckinStatus(); }
+    else { setTickets([]); setCheckinClaimed(false); }
   }, [session]);
 
   const loadTickets = async () => {
     const { data, error } = await supabase
       .from("tickets").select("*").order("created_at", { ascending: false });
     if (!error) setTickets(data || []);
+  };
+
+  const todayLA = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+
+  const loadCheckinStatus = async () => {
+    const { data, error } = await supabase
+      .from("point_events").select("id")
+      .eq("event_type", "checkin").eq("ref_id", todayLA()).limit(1);
+    if (!error) setCheckinClaimed((data || []).length > 0);
+  };
+
+  const handleCheckIn = async () => {
+    setCheckinLoading(true);
+    const { data, error } = await supabase.rpc("daily_checkin");
+    setCheckinLoading(false);
+    if (error) { showToast(error.message || "Error checking in"); return; }
+    setCheckinClaimed(true);
+    if (data && data.awarded) showToast("+10 points!");
   };
 
   const loadDraws = async () => {
@@ -449,6 +470,9 @@ export default function App() {
                   </div>
                 ))}
               </div>
+              <button style={S.checkinBtn(checkinClaimed)} disabled={checkinClaimed || checkinLoading} onClick={handleCheckIn}>
+                {checkinClaimed ? "Checked in today ✓" : "Check in · +10 pts"}
+              </button>
               <div style={S.sectionLabel}>Pick Strategy</div>
               <div style={S.modesRow}>
                 {Object.entries(MODES).map(([key,m])=>(
