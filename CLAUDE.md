@@ -5,7 +5,7 @@ The Technical Master Plan and Orientation Reference (docx) hold strategy and rat
 this file holds facts. When they conflict, this file wins. Update this file at the end
 of any session that changes architecture, schema, secrets, or workflows.
 
-Last updated: 2026-07-06 (post fix-session: settlement, security cleanup, profiles groundwork)
+Last updated: 2026-07-15 (cron 401 root-caused and fixed: verify_jwt disabled for bright-api)
 
 ## What this is
 
@@ -64,9 +64,16 @@ tier ladder in bright-api (points). `match_any` intentionally overlaps with losi
 Auth: requires header `x-cron-secret` matching secret `CRON_SECRET`; 401 otherwise (fails closed if secret unset).
 Testing from the dashboard test panel requires adding that header manually.
 
-Cron: 4am UTC after draw nights, via pg_net `net.http_post` (pg_net extension installed 2026-07-06 —
-it may have been missing before, which likely explains historical cron silence). The cron SQL sends
-the x-cron-secret header. Draw days: Powerball Mon/Wed/Sat, Mega Millions Tue/Fri.
+Cron: 4am UTC after draw nights, via pg_net `net.http_post`. The cron SQL sends the x-cron-secret
+header. Draw days: Powerball Mon/Wed/Sat, Mega Millions Tue/Fri.
+
+Cron 401 root cause (found 2026-07-15): the historical 401s were the platform's JWT verification
+gate rejecting a stray `Authorization` header the cron SQL was also sending — that header carried
+the lottery API token, not a Supabase JWT, so the gate failed it before the request ever reached
+function code. Fixed by disabling `verify_jwt` for bright-api (both the dashboard toggle and a
+pin in `supabase/config.toml`) and removing the Authorization header from the cron SQL.
+`x-cron-secret` remains the sole auth layer for this function; config.toml pin was added but not
+redeployed as part of this fix.
 
 ## Secrets (Supabase → Edge Functions → Secrets)
 
@@ -102,7 +109,7 @@ Done: auth, tickets CRUD + RLS, manual entry, auto result fetching + server-side
 in-app draw reminders, secured edge function, profiles/username groundwork.
 
 Open loop: first honest cron verification — check bright-api Invocations tab for a ~04:00 UTC entry
-(next expected: after Tue mm draw → morning of Wed 2026-07-08 UTC).
+that succeeds now that the JWT-gate 401 is fixed (next expected: after the next scheduled draw).
 
 Next phase: **Gamification** (fresh chat). Remaining schema: `point_events` table + leaderboard view.
 Point events (planned): save ticket, draw-day check-in, any match, match 3+, jackpot bonus.
