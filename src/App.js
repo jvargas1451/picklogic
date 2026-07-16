@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import config from "./config";
 import { supabase } from "./supabase";
 
@@ -241,25 +241,24 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (session) { loadTickets(); loadCheckinStatus(); }
-    else { setTickets([]); setCheckinClaimed(false); }
-  }, [session]);
-
-  const loadTickets = async () => {
+  const loadTickets = useCallback(async () => {
     const { data, error } = await supabase
       .from("tickets").select("*").order("created_at", { ascending: false });
     if (!error) setTickets(data || []);
-  };
+  }, []);
 
-  const todayLA = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
-
-  const loadCheckinStatus = async () => {
+  const loadCheckinStatus = useCallback(async () => {
+    const todayLA = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
     const { data, error } = await supabase
       .from("point_events").select("id")
-      .eq("event_type", "checkin").eq("ref_id", todayLA()).limit(1);
+      .eq("event_type", "checkin").eq("ref_id", todayLA).limit(1);
     if (!error) setCheckinClaimed((data || []).length > 0);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (session) { loadTickets(); loadCheckinStatus(); }
+    else { setTickets([]); setCheckinClaimed(false); }
+  }, [session, loadTickets, loadCheckinStatus]);
 
   const handleCheckIn = async () => {
     setCheckinLoading(true);
