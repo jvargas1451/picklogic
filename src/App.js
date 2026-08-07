@@ -18,6 +18,78 @@ function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+// ── Dates ─────────────────────────────────────────────────────
+// Format a Date as YYYY-MM-DD using its LOCAL calendar components.
+//
+// Never use toISOString() for this. toISOString() converts to UTC first, so in
+// any negative-offset timezone an evening date rolls forward a day — e.g. 8pm
+// PT on Aug 5 serialises as "2026-08-06". That is how a quick-pick saved the
+// evening before a draw could land on the wrong draw_date and never settle.
+// This is the same UTC-mixing bug class already fixed once in getDrawReminders.
+function toLocalDateString(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+// Parse a YYYY-MM-DD string into a LOCAL Date, or null if it isn't a real date.
+//
+// Do NOT use `new Date("2026-08-08")` here: JS parses a bare date string as UTC
+// midnight, so .getDay() returns the wrong weekday in any negative-offset
+// timezone. Building from components keeps it local, and the weekday of a draw
+// date is a property of the date itself — this gives the same answer anywhere.
+function parseLocalDate(str) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str || "");
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  const dt = new Date(y, mo - 1, d);
+  // Reject values that silently roll over, e.g. "2026-02-31" -> Mar 3.
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return dt;
+}
+
+// ── Draw-date rules ───────────────────────────────────────────
+// Draw weekdays, 0=Sun. Single source of truth: used by validation, the
+// non-draw-day warning, and getDrawReminders. Do not re-declare these inline.
+const DRAW_DAYS = { pb: [1, 3, 6], mm: [2, 5] };
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// Hard bounds. Before MIN a ticket can never settle (draw history won't reach
+// back that far); beyond MAX_DAYS_AHEAD is past any real advance-play window.
+const MIN_DRAW_DATE = "2024-01-01";
+const MAX_DRAW_DATE_DAYS_AHEAD = 35;
+
+function maxDrawDate() {
+  const n = new Date();
+  return toLocalDateString(new Date(n.getFullYear(), n.getMonth(), n.getDate() + MAX_DRAW_DATE_DAYS_AHEAD));
+}
+
+// Returns an error string to block the save, or null if the date is acceptable.
+function validateDrawDate(str) {
+  if (!str) return "Enter a draw date";
+  if (!parseLocalDate(str)) return "Enter a valid draw date";
+  // Safe as a string compare: the format is already validated and zero-padded.
+  if (str < MIN_DRAW_DATE) return `Draw date can't be before ${MIN_DRAW_DATE}`;
+  if (str > maxDrawDate()) return `Draw date can't be more than ${MAX_DRAW_DATE_DAYS_AHEAD} days out`;
+  return null;
+}
+
+// Token identifying what the user was warned about. Keyed on game AND date, so
+// changing either one re-arms the warning rather than leaving it armed.
+function warnKey(game, str) {
+  return `${game}|${str}`;
+}
+
+// Returns warning copy if the date isn't a draw night for this game, else null.
+// This is a SOFT check — it warns and allows the save; it never blocks.
+function nonDrawDayWarning(game, str) {
+  const dt = parseLocalDate(str);
+  if (!dt) return null;
+  if ((DRAW_DAYS[game] || []).includes(dt.getDay())) return null;
+  return `Heads up — ${GAMES[game].name} doesn't draw on ${WEEKDAY_NAMES[dt.getDay()]}. Save anyway?`;
+}
+
 function pickUnique(count, min, max, weights) {
   const nums = [];
   if (weights) {
@@ -126,6 +198,7 @@ const S = {
   formLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, display: "block" },
   formInput: { width: "100%", padding: "12px 14px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: 14, outline: "none", marginBottom: 16 },
   btnSave: { width: "100%", padding: 14, borderRadius: 12, border: "none", background: "#7c6aff", color: "white", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 20px rgba(124,106,255,0.3)", marginTop: 16 },
+  drawDayWarning: { padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(245,166,35,0.4)", background: "rgba(245,166,35,0.12)", color: "#f5a623", fontSize: 12, lineHeight: 1.5, marginTop: 4 },
   disclaimer: { marginTop: 28, padding: 16, borderRadius: 12, border: "1px solid #2a2a38", background: "#13131a" },
   disclaimerText: { fontSize: 11, color: "#6b6b82", lineHeight: 1.6, textAlign: "center" },
   histHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 },
@@ -233,11 +306,15 @@ export default function App() {
   const [draws, setDraws] = useState([]);
   const [filter, setFilter] = useState("all");
   const [form, setForm] = useState({ drawDate: "", notes: "" });
+  // Non-draw-day confirmation. Holds the date string the user was warned about,
+  // so editing the date re-arms the warning instead of silently staying armed.
+  const [warnedDate, setWarnedDate] = useState(null);
   const [toast, setToast] = useState("");
   const [expandedTicket, setExpandedTicket] = useState(null);
   const [editValues, setEditValues] = useState({});
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualForm, setManualForm] = useState({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
+  const [manualWarnedDate, setManualWarnedDate] = useState(null);
   const [checkinClaimed, setCheckinClaimed] = useState(false);
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [matchPoints, setMatchPoints] = useState({});
@@ -381,11 +458,18 @@ export default function App() {
     const special = randInt(g.special[0], g.special[1]);
     setPick({ game, numbers: nums, special, mode, rationale });
     setShowSave(false);
-    setForm({ drawDate: new Date().toISOString().split("T")[0], notes: "" });
+    setForm({ drawDate: toLocalDateString(new Date()), notes: "" });
   };
 
   const saveTicket = async () => {
     if (!pick || !session) return;
+    const dateError = validateDrawDate(form.drawDate);
+    if (dateError) { showToast(dateError); return; }
+    // Soft warning: first click arms it, second click through saves.
+    if (nonDrawDayWarning(pick.game, form.drawDate) && warnedDate !== warnKey(pick.game, form.drawDate)) {
+      setWarnedDate(warnKey(pick.game, form.drawDate));
+      return;
+    }
     const { data, error } = await supabase.from("tickets").insert({
       user_id: session.user.id,
       game: pick.game,
@@ -401,6 +485,7 @@ export default function App() {
     setShowSave(false);
     setPick(null);
     setForm({ drawDate: "", notes: "" });
+    setWarnedDate(null);
     showToast("✓ Ticket saved!");
   };
 
@@ -434,6 +519,13 @@ export default function App() {
     if (nums.some(n => n < g.main[0] || n > g.main[1])) { showToast("Main numbers out of range"); return; }
     if (new Set(nums).size !== 5) { showToast("Numbers must be unique"); return; }
     if (special < g.special[0] || special > g.special[1]) { showToast("Special ball out of range"); return; }
+    const dateError = validateDrawDate(manualForm.drawDate);
+    if (dateError) { showToast(dateError); return; }
+    // Soft warning: first click arms it, second click through saves.
+    if (nonDrawDayWarning(manualForm.game, manualForm.drawDate) && manualWarnedDate !== warnKey(manualForm.game, manualForm.drawDate)) {
+      setManualWarnedDate(warnKey(manualForm.game, manualForm.drawDate));
+      return;
+    }
     const { data, error } = await supabase.from("tickets").insert({
       user_id: session.user.id,
       game: manualForm.game,
@@ -448,28 +540,21 @@ export default function App() {
     setTickets([data, ...tickets]);
     setShowManualEntry(false);
     setManualForm({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
+    setManualWarnedDate(null);
     showToast("✓ Ticket saved!");
   };
     const getDrawReminders = () => {
     const now = new Date();
     const day = now.getDay();
-    const toLocalDateString = (d) => {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${dd}`;
-    };
     const today = toLocalDateString(now);
     const yesterday = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
     const reminders = [];
-    const pbDays = [1, 3, 6];
-    const mmDays = [2, 5];
 
     // No ticket yet — draw is tonight
-    if (pbDays.includes(day) && !tickets.some(t => t.game === "pb" && t.draw_date === today)) {
+    if (DRAW_DAYS.pb.includes(day) && !tickets.some(t => t.game === "pb" && t.draw_date === today)) {
       reminders.push({ game: "pb", label: "Powerball draws tonight at 10:59pm ET — you don't have a ticket yet", color: "#e8364a" });
     }
-    if (mmDays.includes(day) && !tickets.some(t => t.game === "mm" && t.draw_date === today)) {
+    if (DRAW_DAYS.mm.includes(day) && !tickets.some(t => t.game === "mm" && t.draw_date === today)) {
       reminders.push({ game: "mm", label: "Mega Millions draws tonight at 11:00pm ET — you don't have a ticket yet", color: "#f5a623" });
     }
 
@@ -483,6 +568,13 @@ export default function App() {
 
     return reminders;
   };
+  // Non-draw-day warning state, derived per render. "Armed" means the user has
+  // already clicked Save once and been shown the warning; a second click saves.
+  const saveWarning = pick ? nonDrawDayWarning(pick.game, form.drawDate) : null;
+  const saveWarnArmed = !!saveWarning && warnedDate === warnKey(pick?.game, form.drawDate);
+  const manualWarning = nonDrawDayWarning(manualForm.game, manualForm.drawDate);
+  const manualWarnArmed = !!manualWarning && manualWarnedDate === warnKey(manualForm.game, manualForm.drawDate);
+
   const filtered = tickets.filter(t => filter==="all" || t.game===filter || (filter==="open" && t.status==="open"));
 
   const stats = {
@@ -597,11 +689,14 @@ export default function App() {
               {showSave && (
                 <div style={S.saveForm}>
                   <label style={S.formLabel}>Draw Date</label>
-                  <input style={S.formInput} type="date" value={form.drawDate} onChange={e=>setForm({...form,drawDate:e.target.value})} />
+                  <input style={S.formInput} type="date" value={form.drawDate} min={MIN_DRAW_DATE} max={maxDrawDate()} onChange={e=>setForm({...form,drawDate:e.target.value})} />
                   <label style={S.formLabel}>Notes (optional)</label>
                   <input style={S.formInput} type="text" placeholder="e.g. Friday lucky pick..." value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} />
                   <div style={{ fontSize:11, color:"#6b6b82", marginBottom:12 }}>Tip: add stake and payout after the draw from My Tickets</div>
-                  <button style={S.btnSave} onClick={saveTicket}>Save Ticket</button>
+                  {saveWarnArmed && <div style={S.drawDayWarning}>{saveWarning}</div>}
+                  <button style={S.btnSave} onClick={saveTicket}>
+                    {saveWarnArmed ? "Save anyway" : "Save Ticket"}
+                  </button>
                 </div>
               )}
               <div style={S.disclaimer}>
@@ -645,10 +740,13 @@ export default function App() {
         onChange={e => setManualForm({...manualForm, special: e.target.value})} />
     </div>
     <label style={S.formLabel}>Draw Date</label>
-    <input style={S.formInput} type="date" value={manualForm.drawDate} min="2020-01-01" max="2030-12-31" onChange={e => setManualForm({...manualForm, drawDate: e.target.value})} />
+    <input style={S.formInput} type="date" value={manualForm.drawDate} min={MIN_DRAW_DATE} max={maxDrawDate()} onChange={e => setManualForm({...manualForm, drawDate: e.target.value})} />
     <label style={S.formLabel}>Notes (optional)</label>
     <input style={S.formInput} type="text" placeholder="e.g. corner store ticket..." value={manualForm.notes} onChange={e => setManualForm({...manualForm, notes: e.target.value})} />
-    <button style={S.btnSave} onClick={saveManualTicket}>Save Ticket</button>
+    {manualWarnArmed && <div style={S.drawDayWarning}>{manualWarning}</div>}
+    <button style={S.btnSave} onClick={saveManualTicket}>
+      {manualWarnArmed ? "Save anyway" : "Save Ticket"}
+    </button>
   </div>
 )}
               <div style={S.filterRow}>
