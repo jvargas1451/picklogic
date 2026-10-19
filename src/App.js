@@ -217,7 +217,7 @@ const S = {
   logoAccent: { color: "#7c6aff" },
   logoBadge: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", border: "1px solid #2a2a38", padding: "3px 8px", borderRadius: 20, letterSpacing: 0.5 },
   nav: { display: "flex", gap: 4, background: "#13131a", border: "1px solid #2a2a38", borderRadius: 14, padding: 5, marginBottom: 28 },
-  navBtn: (active) => ({ flex: 1, padding: 10, border: "none", background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: T.body, fontWeight: 500, borderRadius: 10, cursor: "pointer", transition: "all 0.2s" }),
+  navBtn: (active) => ({ flex: 1, padding: "10px 4px", border: "none", background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: `clamp(${T.small}px, 3.6vw, ${T.body}px)`, fontWeight: 500, borderRadius: 10, cursor: "pointer", transition: "all 0.2s" }),
   sectionLabel: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12 },
   gameGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 28 },
   checkinBtn: (claimed) => ({ width: "100%", padding: 14, borderRadius: 14, border: `1px solid ${claimed ? "#2a2a38" : "rgba(124,106,255,0.4)"}`, background: claimed ? "transparent" : "rgba(124,106,255,0.15)", color: claimed ? "#6b6b82" : "#7c6aff", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: T.body, cursor: claimed ? "default" : "pointer", marginBottom: 20, transition: "all 0.2s" }),
@@ -282,8 +282,8 @@ const S = {
   emptyStateTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: T.strong, color: "#f0f0f5", marginBottom: 8 },
   emptyStateText: { color: "#6b6b82", fontSize: T.body },
   statsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 },
-  statCard: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 16, padding: "20px 18px" },
-  statValue: (color) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: T.display, marginBottom: 4, color: color || "#f0f0f5" }),
+  statCard: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 16, padding: "20px 18px", minWidth: 0 },
+  statValue: (color) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: `clamp(${T.title}px, 6.5vw, ${T.display}px)`, marginBottom: 4, color: color || "#f0f0f5" }),
   statLabel: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase" },
   freqTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: T.body, marginBottom: 14, marginTop: 24, color: "#f0f0f5" },
   freqGrid: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 },
@@ -684,7 +684,7 @@ export default function App() {
           <nav style={S.nav}>
             {["pick","history","stats","leaderboard"].map((v,i)=>(
               <button key={v} style={S.navBtn(view===v)} onClick={()=>setView(v)}>
-                {["Quick Pick","My Tickets","Stats","Leaderboard"][i]}
+                {["Quick Pick","My Tickets","Stats","Leaders"][i]}
               </button>
             ))}
           </nav>
@@ -864,7 +864,7 @@ export default function App() {
                           <input style={S.ticketEditInput} type="text" defaultValue={t.notes||""}
                             onChange={e=>setEditValues({...editValues,[t.id]:{...(editValues[t.id]||{}),notes:e.target.value}})} />
                         </div>
-                        <div style={{display:"flex",flexDirection:"column",gap:4,paddingTop:14}}>
+                        <div style={{display:"flex",flexDirection:"column",gap:4,alignSelf:"flex-end"}}>
                           <button onClick={()=>saveTicketEdit(t.id)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#7c6aff",color:"white",fontSize:T.small,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Save</button>
                           <button onClick={()=>{setExpandedTicket(null);setEditValues({});}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2a2a38",background:"transparent",color:"#6b6b82",fontSize:T.small,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Cancel</button>
                         </div>
