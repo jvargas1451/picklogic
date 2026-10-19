@@ -5,7 +5,7 @@ The Technical Master Plan and Orientation Reference (docx) hold strategy and rat
 this file holds facts. When they conflict, this file wins. Update this file at the end
 of any session that changes architecture, schema, secrets, or workflows.
 
-Last updated: 2026-08-07 (date integrity phase COMPLETE — verified in production)
+Last updated: 2026-10-19 (cron schedule changed; launch-prep phase in progress)
 
 ## What this is
 
@@ -79,6 +79,9 @@ What it does per invocation:
    this deliberately includes losing near-miss tickets, a product decision). A per-ticket award
    failure is logged and does not abort the sweep or the ticket's won/lost settlement.
 4. Returns honest body: `{ ok, saved: [...], settled: <count>, awarded: <count> }`.
+    NOTE: `saved` lists what the upsert touched, including rows that already
+    existed. The 2026-09-19 run reported saving pb 2026-09-16, which had been
+    there since 09-17. `saved` is not a count of new rows.
 
 Separately, an AFTER INSERT trigger on `tickets` awards the `save_ticket` event (5 pts) on every
 ticket insert, including manual entry — not just app-flow saves.
@@ -101,9 +104,13 @@ Auth: `x-cron-secret` (matching secret `CRON_SECRET`) is the SOLE auth layer for
 manually — the value lives in the cron.job command (`cron.job` table, not a secret you can view
 via the dashboard's Secrets page).
 
-Cron: 4am UTC after draw nights, via pg_net `net.http_post`. Draw days: Powerball Mon/Wed/Sat,
-Mega Millions Tue/Fri. Job: jobid 1, name "fetch-draw-results", schedule `0 4 * * 1,2,3,4,6`.
-Confirmed firing on schedule (pg_net working) as of 2026-07-15.
+Cron: 06:00 UTC daily, via pg_net `net.http_post`. Job: jobid 1, name
+"fetch-draw-results", schedule `0 6 * * *`. Changed 2026-09-20 from
+`0 4 * * 1,2,3,4,6`. Two reasons: 3 hours of publish-lag margin instead of 1,
+and a daily run gives every draw at least two capture attempts. Under the old
+schedule Saturday Powerball had exactly ONE attempt (Monday 04:00), which is
+how pb 2026-09-12 was lost permanently. Zero new gaps in the 30 days since
+the change. Verified via cron.job 2026-10-19.
 
 Cron 401 root cause (found 2026-07-13/15): the historical 401s were the platform's JWT
 verification gate rejecting a stray `Authorization` header the cron SQL was also sending — that
@@ -148,14 +155,19 @@ Rules: never hardcode secrets in source; never print secret values in sessions; 
   game, it doesn't backfill. Open tickets behind a gap never settle on their own. Draw history
   starts 2026-06-03 (two June rows: pb 06-03, mm 06-05), then a gap until mm 2026-07-03, then
   continuous. See "Next up" for the planned fix. June-era relic tickets caught by an old gap
-  were deleted.
+  were deleted. Update: 78 rows as of 2026-10-19. Gaps are the June block (06-06 through 07-01, 19 draws)
+  and pb 2026-09-12. The 09-12 loss traces to a run on 09-14 that saved nothing for either game;
+  the next run found pb latest = 09-14 and skipped it.
 - GAPS ARE NOT ALWAYS CRON FAILURES. Diagnosed 2026-08-07 on a missing pb 2026-08-05: cron fired
   on schedule and the function returned HTTP 200 with
   `{"ok":true,"saved":["pb 2026-08-03","mm 2026-08-04"],...}` — it ran fine, but the feed had not
   yet published Wednesday's draw. Powerball draws 02:59 UTC; cron runs 04:00 UTC, ~1 hour later,
   which sits right on the edge of the feed's publish window. Most weeks it wins, some weeks it
-  doesn't. Moving cron to `0 6` UTC would give 3 hours of margin — not done yet, logged for the
-  seed/self-heal phase.
+  doesn't. Update 2026-10-19 pb 2026-08-05 is no longer missing. It landed 2026-08-08 at 04:00, three days late.
+  cron was moved  to `0 6` UTC on 2026-09-20.
+  SELF-HEAL RULE: a late-publishing draw recovers on its own ONLY if a later run
+  fires before that game's next draw publishes. Otherwise the gap is permanent.
+  This is why daily cron matters more than the hour it runs at.
 - DIAGNOSING CRON: `cron.job_run_details` only proves the SQL ran. pg_net is async, so
   "succeeded / 1 row" just means the request was queued. The actual HTTP status and response body
   are in `net._http_response` — but that table prunes aggressively (it held exactly one row when
@@ -263,22 +275,32 @@ save_ticket points deliberately kept. Recon found the data already clean — 0 N
 0 pre-2024. Schema now rejects bad dates; UI rejects them before the database sees them. This
 phase is closed.
 
-Next up: **draw history — seed + self-heal** (fresh chat). Two parts: (1) one-time backfill of
-draw history (~6 months back — as of 2026-08-07 there are 26 rows: pb 06-03 and mm 06-05, then a
-gap to mm 07-03, then continuous, plus a fresh hole at pb 08-05), (2) a function that detects and
-fetches missing dates going forward, so future cron/outage gaps self-heal instead of leaving
-permanent holes. FIRST STEP before building anything: verify whether lotteryresultsfeed.com
-supports fetch-by-date (the current integration only fetches "latest"); if it doesn't, the seed
-step needs an alternate data source. Prioritized ahead of multi-ticket quick pick because it
-blocks tickets behind existing gaps from ever settling.
+Next up: LAUNCH PREP. Goal changed 2026-10-19: launch = a public website
+strangers can sign up for and use. App Store is an explicitly later phase.
+
+Blocking launch:
+1. Readability — maxWidth 480 phone layout on desktop; type scale bottoms out
+   at 9-10px; no media queries, rem, vw or clamp anywhere in App.js
+2. Auth email — Supabase built-in SMTP is 2 emails/hour and testing-only.
+   Decision 2026-10-19: ship with email confirmation OFF; email still required
+   at signup. Confirmation returns alongside email reminders, once the domain
+   and Resend are live.
+3. Privacy policy + ToS before sharing the link widely
+
+Deprioritized: draw history seed + self-heal. Still worth doing (pb 2026-09-12
+and the June block stay permanent holes), but it protects history that no
+current user has tickets behind. Cron is stable; new gaps are not accumulating.
+Open question still unanswered: does lotteryresultsfeed.com support
+fetch-by-date? Nothing recorded either way.
+
+Also deferred: ticket scanner (wanted, post-launch), multi-ticket quick pick,
+spending tracker, Stripe.
 
 The seed lands into a clean schema now: both `draw_date` columns are real `date` types, so
 Postgres rejects malformed rows at insert time instead of J hand-cleaning TEXT afterward. That
 was the whole point of doing the date integrity phase first.
 
 Backlog (do not build now):
-- Move cron from `0 4` to `0 6` UTC for publish-lag margin (see Operational notes) — cheap
-  mitigation, independent of self-heal
 - Memoize session-gated loads (`loadTickets`, `loadCheckinStatus`, `loadProfile`) against
   `onAuthStateChange` token-refresh re-fires — they currently re-run on every refresh, not just
   login/logout. Inherited inefficiency, harmless at current scale, not urgent.
