@@ -90,6 +90,36 @@ function nonDrawDayWarning(game, str) {
   return `Heads up — ${GAMES[game].name} doesn't draw on ${WEEKDAY_NAMES[dt.getDay()]}. Save anyway?`;
 }
 
+// ── Email typo guard ──────────────────────────────────────────
+// Common misspellings of major mail domains. Email confirmation is off, so a
+// mistyped address would silently break password recovery. Single source of
+// truth for the typo guard; do not re-declare inline.
+const EMAIL_DOMAIN_TYPOS = {
+  "gmial.com": "gmail.com",
+  "gmai.com": "gmail.com",
+  "gmail.co": "gmail.com",
+  "gmaill.com": "gmail.com",
+  "hotmial.com": "hotmail.com",
+  "hotmai.com": "hotmail.com",
+  "yaho.com": "yahoo.com",
+  "yahooo.com": "yahoo.com",
+  "outlok.com": "outlook.com",
+  "iclould.com": "icloud.com",
+  "icloud.co": "icloud.com",
+};
+
+// Returns warning copy if the email's domain looks like a known typo, else null.
+// This is a SOFT check — same arm/confirm shape as nonDrawDayWarning; it never blocks.
+function emailTypoWarning(email) {
+  const str = (email || "").trim();
+  const at = str.lastIndexOf("@");
+  if (at < 0) return null;
+  const domain = str.slice(at + 1).toLowerCase();
+  const fix = EMAIL_DOMAIN_TYPOS[domain];
+  if (!fix) return null;
+  return `Did you mean ${str.slice(0, at)}@${fix}?`;
+}
+
 function pickUnique(count, min, max, weights) {
   const nums = [];
   if (weights) {
@@ -249,8 +279,18 @@ function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // Email typo confirmation. Holds the exact email string the user was warned
+  // about; editing the address no longer matches, so the warning re-arms.
+  const [warnedEmail, setWarnedEmail] = useState(null);
+
+  const typoWarning = tab === "signup" ? emailTypoWarning(email) : null;
+  const typoWarnArmed = !!typoWarning && warnedEmail === email;
 
   const handleSubmit = async () => {
+    if (typoWarning && warnedEmail !== email) {
+      setWarnedEmail(email);
+      return;
+    }
     setError(""); setSuccess(""); setLoading(true);
     if (tab === "login") {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -258,7 +298,6 @@ function AuthScreen() {
     } else {
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) setError(error.message);
-      else setSuccess("Account created! Check your email to confirm, then log in.");
     }
     setLoading(false);
   };
@@ -280,12 +319,14 @@ function AuthScreen() {
           <input style={S.formInput} type="email" placeholder="you@email.com" value={email}
             onChange={e => setEmail(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleSubmit()} />
+          {tab === "signup" && <div style={{ fontSize: 11, color: "#6b6b82", marginTop: -10, marginBottom: 16 }}>Used for password recovery.</div>}
           <label style={S.formLabel}>Password</label>
           <input style={S.formInput} type="password" placeholder="••••••••" value={password}
             onChange={e => setPassword(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleSubmit()} />
+          {typoWarnArmed && <div style={S.drawDayWarning}>{typoWarning}</div>}
           <button style={S.btnSave} onClick={handleSubmit} disabled={loading}>
-            {loading ? "Please wait..." : tab === "login" ? "Log In" : "Create Account"}
+            {loading ? "Please wait..." : tab === "login" ? "Log In" : typoWarnArmed ? "Create account anyway" : "Create Account"}
           </button>
         </div>
       </div>
