@@ -183,92 +183,120 @@ function checkResult(ticket, draws) {
   return null;
 }
 
+// ── Type scale ────────────────────────────────────────────────
+// Single source of truth for text size. Every text fontSize references a token;
+// do not use bare pixel numbers for text, in S or inline.
+const T = {
+  micro: 11,   // labels, badges, tags
+  small: 13,   // secondary text, hints, small buttons
+  body: 15,    // default text, nav, buttons
+  strong: 17,  // emphasis, game names, ball numerals
+  title: 22,   // section titles, logo, jackpot
+  display: 30, // stat values, auth logo
+};
+
+// iOS Safari auto-zooms any focused input under 16px. This is a floor applied
+// on top of the scale, not a scale token: inputs use Math.max(token, INPUT_FONT_MIN).
+const INPUT_FONT_MIN = 16;
+
+// Decorative emoji/icon glyphs. Not text, so kept out of T.
+// Gap between an input and the helper line directly under it. The hint then
+// carries the field's normal bottom margin (S.formInput.marginBottom).
+const FORM_HINT_GAP = 6;
+
+const ICON_SIZE = {
+  banner: 16,    // draw-reminder ticket glyph
+  empty: 32,     // S.emptyIcon
+  emptyHero: 40, // My Tickets / Leaderboard empty states
+};
+
 const S = {
-  app: { maxWidth: 480, margin: "0 auto", padding: "0 20px 100px", position: "relative", zIndex: 1 },
+  app: { maxWidth: 600, margin: "0 auto", padding: "0 20px 100px", position: "relative", zIndex: 1 },
   header: { padding: "32px 0 24px", display: "flex", alignItems: "center", justifyContent: "space-between" },
-  logo: { fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 22, letterSpacing: -0.5 },
+  logo: { fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: T.title, letterSpacing: -0.5 },
   logoAccent: { color: "#7c6aff" },
-  logoBadge: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", border: "1px solid #2a2a38", padding: "3px 8px", borderRadius: 20, letterSpacing: 0.5 },
+  logoBadge: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", border: "1px solid #2a2a38", padding: "3px 8px", borderRadius: 20, letterSpacing: 0.5 },
   nav: { display: "flex", gap: 4, background: "#13131a", border: "1px solid #2a2a38", borderRadius: 14, padding: 5, marginBottom: 28 },
-  navBtn: (active) => ({ flex: 1, padding: 10, border: "none", background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, borderRadius: 10, cursor: "pointer", transition: "all 0.2s" }),
-  sectionLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12 },
+  navBtn: (active) => ({ flex: 1, padding: 10, border: "none", background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: T.body, fontWeight: 500, borderRadius: 10, cursor: "pointer", transition: "all 0.2s" }),
+  sectionLabel: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12 },
   gameGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 28 },
-  checkinBtn: (claimed) => ({ width: "100%", padding: 14, borderRadius: 14, border: `1px solid ${claimed ? "#2a2a38" : "rgba(124,106,255,0.4)"}`, background: claimed ? "transparent" : "rgba(124,106,255,0.15)", color: claimed ? "#6b6b82" : "#7c6aff", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, cursor: claimed ? "default" : "pointer", marginBottom: 20, transition: "all 0.2s" }),
+  checkinBtn: (claimed) => ({ width: "100%", padding: 14, borderRadius: 14, border: `1px solid ${claimed ? "#2a2a38" : "rgba(124,106,255,0.4)"}`, background: claimed ? "transparent" : "rgba(124,106,255,0.15)", color: claimed ? "#6b6b82" : "#7c6aff", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: T.body, cursor: claimed ? "default" : "pointer", marginBottom: 20, transition: "all 0.2s" }),
   usernameRow: { display: "flex", alignItems: "center", justifyContent: "space-between", background: "#13131a", border: "1px solid #2a2a38", borderRadius: 14, padding: "12px 16px", marginBottom: 12 },
-  usernameText: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: "#f0f0f5" },
-  usernameEditLink: { fontSize: 11, color: "#6b6b82", background: "transparent", border: "1px solid #2a2a38", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" },
+  usernameText: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.body, color: "#f0f0f5" },
+  usernameEditLink: { fontSize: T.small, color: "#6b6b82", background: "transparent", border: "1px solid #2a2a38", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" },
   usernameSetRow: { display: "flex", gap: 8, marginBottom: 12 },
-  usernameInput: { flex: 1, padding: "10px 12px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: 13, outline: "none" },
-  usernameSaveBtn: { padding: "10px 16px", borderRadius: 10, border: "none", background: "#7c6aff", color: "white", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer" },
-  usernameCancelBtn: { padding: "10px 14px", borderRadius: 10, border: "1px solid #2a2a38", background: "transparent", color: "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: 12, cursor: "pointer" },
+  usernameInput: { flex: 1, padding: "10px 12px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: Math.max(T.body, INPUT_FONT_MIN), outline: "none" },
+  usernameSaveBtn: { padding: "10px 16px", borderRadius: 10, border: "none", background: "#7c6aff", color: "white", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.small, cursor: "pointer" },
+  usernameCancelBtn: { padding: "10px 14px", borderRadius: 10, border: "1px solid #2a2a38", background: "transparent", color: "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: T.small, cursor: "pointer" },
   leaderboardRow: (highlight) => ({ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 14, border: `1px solid ${highlight ? "rgba(124,106,255,0.4)" : "#2a2a38"}`, background: highlight ? "rgba(124,106,255,0.1)" : "#13131a", marginBottom: 8 }),
-  leaderboardRank: { fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#6b6b82", width: 32 },
-  leaderboardUsername: { flex: 1, fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 14, color: "#f0f0f5" },
-  leaderboardPoints: { fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#7c6aff", fontWeight: 600 },
+  leaderboardRank: { fontFamily: "'DM Mono', monospace", fontSize: T.small, color: "#6b6b82", width: 32 },
+  leaderboardUsername: { flex: 1, fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: T.body, color: "#f0f0f5" },
+  leaderboardPoints: { fontFamily: "'DM Mono', monospace", fontSize: T.small, color: "#7c6aff", fontWeight: 600 },
   gameCard: (active, type) => ({ padding: "18px 16px", borderRadius: 16, border: `2px solid ${active ? (type === "pb" ? "#e8364a" : "#f5a623") : "#2a2a38"}`, background: "#13131a", cursor: "pointer", transition: "all 0.2s", boxShadow: active ? `0 0 24px ${type === "pb" ? "rgba(232,54,74,0.15)" : "rgba(245,166,35,0.15)"}` : "none" }),
-  gameName: (type) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: type === "pb" ? "#e8364a" : "#f5a623", marginBottom: 4 }),
-  gameOdds: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82" },
-  gameJackpot: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 20, marginTop: 8, color: "#f0f0f5" },
-  gameNextDraw: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", marginTop: 4 },
+  gameName: (type) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.strong, color: type === "pb" ? "#e8364a" : "#f5a623", marginBottom: 4 }),
+  gameOdds: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82" },
+  gameJackpot: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: T.title, marginTop: 8, color: "#f0f0f5" },
+  gameNextDraw: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", marginTop: 4 },
   modesRow: { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" },
-  modeBtn: (active) => ({ padding: "8px 16px", borderRadius: 20, border: `1px solid ${active ? "#7c6aff" : "#2a2a38"}`, background: active ? "rgba(124,106,255,0.15)" : "transparent", color: active ? "#7c6aff" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all 0.2s" }),
+  modeBtn: (active) => ({ padding: "8px 16px", borderRadius: 20, border: `1px solid ${active ? "#7c6aff" : "#2a2a38"}`, background: active ? "rgba(124,106,255,0.15)" : "transparent", color: active ? "#7c6aff" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: T.small, fontWeight: 500, cursor: "pointer", transition: "all 0.2s" }),
   pickBox: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 20, padding: "28px 24px", marginBottom: 16 },
-  pickLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between" },
-  modeTag: { fontSize: 10, padding: "3px 8px", borderRadius: 10, background: "rgba(124,106,255,0.15)", color: "#7c6aff", border: "1px solid rgba(124,106,255,0.2)" },
+  pickLabel: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between" },
+  modeTag: { fontSize: T.micro, padding: "3px 8px", borderRadius: 10, background: "rgba(124,106,255,0.15)", color: "#7c6aff", border: "1px solid rgba(124,106,255,0.2)" },
   ballsRow: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 16 },
-  ball: (type) => ({ width: 48, height: 48, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 16, background: type === "main" ? "#1c1c26" : type === "pb" ? "#e8364a" : "#f5a623", border: type === "main" ? "2px solid #2a2a38" : "none", color: type === "mm" ? "#0a0a0f" : "#f0f0f5", boxShadow: type === "pb" ? "0 0 20px rgba(232,54,74,0.3)" : type === "mm" ? "0 0 20px rgba(245,166,35,0.3)" : "none" }),
-  sep: { color: "#6b6b82", fontSize: 20 },
-  rationale: { fontSize: 12, color: "#6b6b82", fontStyle: "italic", lineHeight: 1.5, paddingTop: 14, borderTop: "1px solid #2a2a38" },
+  ball: (type) => ({ width: 48, height: 48, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.strong, background: type === "main" ? "#1c1c26" : type === "pb" ? "#e8364a" : "#f5a623", border: type === "main" ? "2px solid #2a2a38" : "none", color: type === "mm" ? "#0a0a0f" : "#f0f0f5", boxShadow: type === "pb" ? "0 0 20px rgba(232,54,74,0.3)" : type === "mm" ? "0 0 20px rgba(245,166,35,0.3)" : "none" }),
+  sep: { color: "#6b6b82", fontSize: T.title },
+  rationale: { fontSize: T.small, color: "#6b6b82", fontStyle: "italic", lineHeight: 1.5, paddingTop: 14, borderTop: "1px solid #2a2a38" },
   emptyPick: { textAlign: "center", padding: "20px 0" },
-  emptyIcon: { fontSize: 32, marginBottom: 10, opacity: 0.3 },
-  emptyText: { color: "#6b6b82", fontSize: 13 },
-  btnPrimary: (type) => ({ width: "100%", padding: 16, borderRadius: 14, border: "none", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, cursor: "pointer", background: type === "pb" ? "#e8364a" : "#f5a623", color: type === "pb" ? "white" : "#0a0a0f", boxShadow: type === "pb" ? "0 4px 24px rgba(232,54,74,0.3)" : "0 4px 24px rgba(245,166,35,0.3)", transition: "all 0.2s" }),
-  btnSecondary: { width: "100%", padding: 14, borderRadius: 14, border: "1px solid #2a2a38", background: "transparent", color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 14, cursor: "pointer", marginTop: 10, transition: "all 0.2s" },
+  emptyIcon: { fontSize: ICON_SIZE.empty, marginBottom: 10, opacity: 0.3 },
+  emptyText: { color: "#6b6b82", fontSize: T.body },
+  btnPrimary: (type) => ({ width: "100%", padding: 16, borderRadius: 14, border: "none", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.strong, cursor: "pointer", background: type === "pb" ? "#e8364a" : "#f5a623", color: type === "pb" ? "white" : "#0a0a0f", boxShadow: type === "pb" ? "0 4px 24px rgba(232,54,74,0.3)" : "0 4px 24px rgba(245,166,35,0.3)", transition: "all 0.2s" }),
+  btnSecondary: { width: "100%", padding: 14, borderRadius: 14, border: "1px solid #2a2a38", background: "transparent", color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: T.body, cursor: "pointer", marginTop: 10, transition: "all 0.2s" },
   saveForm: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 20, padding: 24, marginTop: 16 },
-  formLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, display: "block" },
-  formInput: { width: "100%", padding: "12px 14px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: 14, outline: "none", marginBottom: 16 },
-  btnSave: { width: "100%", padding: 14, borderRadius: 12, border: "none", background: "#7c6aff", color: "white", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 20px rgba(124,106,255,0.3)", marginTop: 16 },
-  drawDayWarning: { padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(245,166,35,0.4)", background: "rgba(245,166,35,0.12)", color: "#f5a623", fontSize: 12, lineHeight: 1.5, marginTop: 4 },
+  formLabel: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, display: "block" },
+  formInput: { width: "100%", padding: "12px 14px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: Math.max(T.body, INPUT_FONT_MIN), outline: "none", marginBottom: 16 },
+  btnSave: { width: "100%", padding: 14, borderRadius: 12, border: "none", background: "#7c6aff", color: "white", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.body, cursor: "pointer", boxShadow: "0 4px 20px rgba(124,106,255,0.3)", marginTop: 16 },
+  formHint: { fontSize: T.small, color: "#6b6b82", lineHeight: 1.4 },
+  drawDayWarning: { padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(245,166,35,0.4)", background: "rgba(245,166,35,0.12)", color: "#f5a623", fontSize: T.small, lineHeight: 1.5, marginTop: 4 },
   disclaimer: { marginTop: 28, padding: 16, borderRadius: 12, border: "1px solid #2a2a38", background: "#13131a" },
-  disclaimerText: { fontSize: 11, color: "#6b6b82", lineHeight: 1.6, textAlign: "center" },
+  disclaimerText: { fontSize: T.small, color: "#6b6b82", lineHeight: 1.6, textAlign: "center" },
   histHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 },
-  histTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 20, color: "#f0f0f5" },
-  ticketCount: { fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#6b6b82", background: "#13131a", border: "1px solid #2a2a38", padding: "4px 10px", borderRadius: 20 },
+  histTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.title, color: "#f0f0f5" },
+  ticketCount: { fontFamily: "'DM Mono', monospace", fontSize: T.small, color: "#6b6b82", background: "#13131a", border: "1px solid #2a2a38", padding: "4px 10px", borderRadius: 20 },
   filterRow: { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" },
-  filterBtn: (active) => ({ padding: "7px 14px", borderRadius: 20, border: `1px solid ${active ? "#f0f0f5" : "#2a2a38"}`, background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }),
+  filterBtn: (active) => ({ padding: "7px 14px", borderRadius: 20, border: `1px solid ${active ? "#f0f0f5" : "#2a2a38"}`, background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontSize: T.small, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }),
   ticketCard: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 16, padding: "18px 20px", marginBottom: 12 },
   ticketTop: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
-  ticketGame: (type) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, color: type === "pb" ? "#e8364a" : "#f5a623" }),
+  ticketGame: (type) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.body, color: type === "pb" ? "#e8364a" : "#f5a623" }),
   ticketMeta: { display: "flex", alignItems: "center", gap: 10 },
-  ticketDate: { fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#6b6b82" },
-  statusBadge: (s) => ({ fontFamily: "'DM Mono', monospace", fontSize: 10, padding: "3px 8px", borderRadius: 10, letterSpacing: 0.5, textTransform: "uppercase", cursor: "pointer", background: s === "won" ? "rgba(62,207,142,0.15)" : s === "lost" ? "rgba(232,54,74,0.1)" : "rgba(107,107,130,0.2)", color: s === "won" ? "#3ecf8e" : s === "lost" ? "#e8364a" : "#6b6b82", border: `1px solid ${s === "won" ? "rgba(62,207,142,0.3)" : s === "lost" ? "rgba(232,54,74,0.2)" : "#2a2a38"}` }),
-  resultBadge: (r) => ({ display: "inline-block", fontFamily: "'DM Mono', monospace", fontSize: 10, padding: "4px 10px", borderRadius: 10, letterSpacing: 0.5, marginTop: 10, background: r.bg, color: r.color, border: `1px solid ${r.border}` }),
-  pointsBadge: { display: "inline-block", fontFamily: "'DM Mono', monospace", fontSize: 10, padding: "4px 10px", borderRadius: 10, letterSpacing: 0.5, marginTop: 10, marginLeft: 8, background: "rgba(124,106,255,0.15)", color: "#7c6aff", border: "1px solid rgba(124,106,255,0.3)" },
+  ticketDate: { fontFamily: "'DM Mono', monospace", fontSize: T.small, color: "#6b6b82" },
+  statusBadge: (s) => ({ fontFamily: "'DM Mono', monospace", fontSize: T.micro, padding: "3px 8px", borderRadius: 10, letterSpacing: 0.5, textTransform: "uppercase", cursor: "pointer", background: s === "won" ? "rgba(62,207,142,0.15)" : s === "lost" ? "rgba(232,54,74,0.1)" : "rgba(107,107,130,0.2)", color: s === "won" ? "#3ecf8e" : s === "lost" ? "#e8364a" : "#6b6b82", border: `1px solid ${s === "won" ? "rgba(62,207,142,0.3)" : s === "lost" ? "rgba(232,54,74,0.2)" : "#2a2a38"}` }),
+  resultBadge: (r) => ({ display: "inline-block", fontFamily: "'DM Mono', monospace", fontSize: T.micro, padding: "4px 10px", borderRadius: 10, letterSpacing: 0.5, marginTop: 10, background: r.bg, color: r.color, border: `1px solid ${r.border}` }),
+  pointsBadge: { display: "inline-block", fontFamily: "'DM Mono', monospace", fontSize: T.micro, padding: "4px 10px", borderRadius: 10, letterSpacing: 0.5, marginTop: 10, marginLeft: 8, background: "rgba(124,106,255,0.15)", color: "#7c6aff", border: "1px solid rgba(124,106,255,0.3)" },
   tBallsRow: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
-  tBall: (type) => ({ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, background: type === "main" ? "#1c1c26" : type === "pb" ? "#e8364a" : "#f5a623", border: type === "main" ? "1.5px solid #2a2a38" : "none", color: type === "mm" ? "#0a0a0f" : "#f0f0f5" }),
-  ticketNotes: { marginTop: 10, fontSize: 12, color: "#6b6b82", fontStyle: "italic" },
+  tBall: (type) => ({ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.body, background: type === "main" ? "#1c1c26" : type === "pb" ? "#e8364a" : "#f5a623", border: type === "main" ? "1.5px solid #2a2a38" : "none", color: type === "mm" ? "#0a0a0f" : "#f0f0f5" }),
+  ticketNotes: { marginTop: 10, fontSize: T.small, color: "#6b6b82", fontStyle: "italic" },
   ticketEditRow: { display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid #2a2a38", alignItems: "center", flexWrap: "wrap" },
-  ticketEditInput: { flex: 1, minWidth: 80, padding: "8px 10px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 8, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: 12, outline: "none" },
-  ticketEditLabel: { fontFamily: "'DM Mono', monospace", fontSize: 9, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase", marginBottom: 4, display: "block" },
+  ticketEditInput: { flex: 1, minWidth: 80, padding: "8px 10px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 8, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: Math.max(T.small, INPUT_FONT_MIN), outline: "none" },
+  ticketEditLabel: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase", marginBottom: 4, display: "block" },
   emptyState: { textAlign: "center", padding: "60px 20px", color: "#6b6b82" },
-  emptyStateTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 16, color: "#f0f0f5", marginBottom: 8 },
-  emptyStateText: { color: "#6b6b82", fontSize: 13 },
+  emptyStateTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: T.strong, color: "#f0f0f5", marginBottom: 8 },
+  emptyStateText: { color: "#6b6b82", fontSize: T.body },
   statsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 },
   statCard: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 16, padding: "20px 18px" },
-  statValue: (color) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 28, marginBottom: 4, color: color || "#f0f0f5" }),
-  statLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase" },
-  freqTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 14, marginBottom: 14, marginTop: 24, color: "#f0f0f5" },
+  statValue: (color) => ({ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: T.display, marginBottom: 4, color: color || "#f0f0f5" }),
+  statLabel: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase" },
+  freqTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: T.body, marginBottom: 14, marginTop: 24, color: "#f0f0f5" },
   freqGrid: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 },
-  freqBall: (hot) => ({ width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, background: hot ? "rgba(232,54,74,0.2)" : "rgba(124,106,255,0.1)", color: hot ? "#e8364a" : "#7c6aff", border: `1.5px solid ${hot ? "rgba(232,54,74,0.4)" : "rgba(124,106,255,0.2)"}` }),
+  freqBall: (hot) => ({ width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.body, background: hot ? "rgba(232,54,74,0.2)" : "rgba(124,106,255,0.1)", color: hot ? "#e8364a" : "#7c6aff", border: `1.5px solid ${hot ? "rgba(232,54,74,0.4)" : "rgba(124,106,255,0.2)"}` }),
   authWrap: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 20px" },
   authBox: { width: "100%", maxWidth: 400, background: "#13131a", border: "1px solid #2a2a38", borderRadius: 24, padding: 32 },
-  authLogo: { fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 28, textAlign: "center", marginBottom: 8 },
-  authSubtitle: { fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#6b6b82", textAlign: "center", marginBottom: 32, letterSpacing: 0.5 },
+  authLogo: { fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: T.display, textAlign: "center", marginBottom: 8 },
+  authSubtitle: { fontFamily: "'DM Mono', monospace", fontSize: T.small, color: "#6b6b82", textAlign: "center", marginBottom: 32, letterSpacing: 0.5 },
   authTabs: { display: "flex", gap: 4, background: "#0a0a0f", borderRadius: 10, padding: 4, marginBottom: 28 },
-  authTab: (active) => ({ flex: 1, padding: "9px 0", border: "none", background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, borderRadius: 8, cursor: "pointer" }),
-  authError: { background: "rgba(232,54,74,0.1)", border: "1px solid rgba(232,54,74,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#e8364a", marginBottom: 16 },
-  authSuccess: { background: "rgba(62,207,142,0.1)", border: "1px solid rgba(62,207,142,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#3ecf8e", marginBottom: 16 },
-  signOutBtn: { background: "transparent", border: "1px solid #2a2a38", color: "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: 11, padding: "5px 12px", borderRadius: 8, cursor: "pointer" },
+  authTab: (active) => ({ flex: 1, padding: "9px 0", border: "none", background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: T.body, fontWeight: 500, borderRadius: 8, cursor: "pointer" }),
+  authError: { background: "rgba(232,54,74,0.1)", border: "1px solid rgba(232,54,74,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: T.small, color: "#e8364a", marginBottom: 16 },
+  authSuccess: { background: "rgba(62,207,142,0.1)", border: "1px solid rgba(62,207,142,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: T.small, color: "#3ecf8e", marginBottom: 16 },
+  signOutBtn: { background: "transparent", border: "1px solid #2a2a38", color: "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: T.small, padding: "5px 12px", borderRadius: 8, cursor: "pointer" },
 };
 
 // ── Auth Screen ──────────────────────────────────────────────
@@ -316,10 +344,10 @@ function AuthScreen() {
           {error && <div style={S.authError}>{error}</div>}
           {success && <div style={S.authSuccess}>{success}</div>}
           <label style={S.formLabel}>Email</label>
-          <input style={S.formInput} type="email" placeholder="you@email.com" value={email}
+          <input style={tab === "signup" ? { ...S.formInput, marginBottom: FORM_HINT_GAP } : S.formInput} type="email" placeholder="you@email.com" value={email}
             onChange={e => setEmail(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleSubmit()} />
-          {tab === "signup" && <div style={{ fontSize: 11, color: "#6b6b82", marginTop: -10, marginBottom: 16 }}>Used for password recovery.</div>}
+          {tab === "signup" && <div style={{ ...S.formHint, marginBottom: S.formInput.marginBottom }}>Used for password recovery.</div>}
           <label style={S.formLabel}>Password</label>
           <input style={S.formInput} type="password" placeholder="••••••••" value={password}
             onChange={e => setPassword(e.target.value)}
@@ -632,7 +660,7 @@ export default function App() {
   if (authLoading) return (
     <div style={{ background: "#0a0a0f", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&display=swap" rel="stylesheet" />
-      <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 22, color: "#f0f0f5" }}>Pick<span style={{ color: "#7c6aff" }}>Logic</span></div>
+      <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: T.title, color: "#f0f0f5" }}>Pick<span style={{ color: "#7c6aff" }}>Logic</span></div>
     </div>
   );
 
@@ -649,8 +677,8 @@ export default function App() {
           </header>
           {getDrawReminders().map(r => (
   <div key={r.game} style={{ background: `rgba(${r.game==="pb"?"232,54,74":"245,166,35"},0.1)`, border: `1px solid rgba(${r.game==="pb"?"232,54,74":"245,166,35"},0.3)`, borderRadius: 12, padding: "12px 16px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
-    <span style={{ fontSize: 16 }}>🎟️</span>
-    <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: r.color, fontWeight: 500 }}>{r.label}</span>
+    <span style={{ fontSize: ICON_SIZE.banner }}>🎟️</span>
+    <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: T.body, color: r.color, fontWeight: 500 }}>{r.label}</span>
   </div>
 ))}
           <nav style={S.nav}>
@@ -733,7 +761,7 @@ export default function App() {
                   <input style={S.formInput} type="date" value={form.drawDate} min={MIN_DRAW_DATE} max={maxDrawDate()} onChange={e=>setForm({...form,drawDate:e.target.value})} />
                   <label style={S.formLabel}>Notes (optional)</label>
                   <input style={S.formInput} type="text" placeholder="e.g. Friday lucky pick..." value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} />
-                  <div style={{ fontSize:11, color:"#6b6b82", marginBottom:12 }}>Tip: add stake and payout after the draw from My Tickets</div>
+                  <div style={{ fontSize:T.small, color:"#6b6b82", marginBottom:12 }}>Tip: add stake and payout after the draw from My Tickets</div>
                   {saveWarnArmed && <div style={S.drawDayWarning}>{saveWarning}</div>}
                   <button style={S.btnSave} onClick={saveTicket}>
                     {saveWarnArmed ? "Save anyway" : "Save Ticket"}
@@ -760,7 +788,7 @@ export default function App() {
     <div style={S.sectionLabel}>Game</div>
     <div style={{display:"flex", gap:8, marginBottom:16}}>
       {["pb","mm"].map(key => (
-        <button key={key} style={{flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${manualForm.game===key?(key==="pb"?"#e8364a":"#f5a623"):"#2a2a38"}`, background: manualForm.game===key?"#1c1c26":"transparent", color: manualForm.game===key?(key==="pb"?"#e8364a":"#f5a623"):"#6b6b82", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:13, cursor:"pointer"}}
+        <button key={key} style={{flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${manualForm.game===key?(key==="pb"?"#e8364a":"#f5a623"):"#2a2a38"}`, background: manualForm.game===key?"#1c1c26":"transparent", color: manualForm.game===key?(key==="pb"?"#e8364a":"#f5a623"):"#6b6b82", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:T.body, cursor:"pointer"}}
           onClick={() => setManualForm({...manualForm, game: key})}>
           {GAMES[key].name}
         </button>
@@ -769,14 +797,14 @@ export default function App() {
     <div style={S.sectionLabel}>Main Numbers (pick 5)</div>
     <div style={{display:"flex", gap:8, marginBottom:16}}>
       {manualForm.numbers.map((n, i) => (
-        <input key={i} style={{width:48, height:48, borderRadius:"50%", background:"#1c1c26", border:"1.5px solid #2a2a38", color:"#f0f0f5", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:14, textAlign:"center", outline:"none"}}
+        <input key={i} style={{width:48, height:48, borderRadius:"50%", background:"#1c1c26", border:"1.5px solid #2a2a38", color:"#f0f0f5", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:Math.max(T.body, INPUT_FONT_MIN), textAlign:"center", outline:"none"}}
          type="number" placeholder="—" value={n} min={1} max={manualForm.game === "pb" ? 69 : 70}
           onChange={e => { const nums = [...manualForm.numbers]; nums[i] = e.target.value; setManualForm({...manualForm, numbers: nums}); }} />
       ))}
     </div>
     <div style={S.sectionLabel}>{manualForm.game === "pb" ? "Powerball" : "Mega Ball"}</div>
     <div style={{marginBottom:16}}>
-      <input style={{width:48, height:48, borderRadius:"50%", background: manualForm.game==="pb"?"#e8364a":"#f5a623", border:"none", color: manualForm.game==="pb"?"white":"#0a0a0f", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:14, textAlign:"center", outline:"none"}}
+      <input style={{width:48, height:48, borderRadius:"50%", background: manualForm.game==="pb"?"#e8364a":"#f5a623", border:"none", color: manualForm.game==="pb"?"white":"#0a0a0f", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:Math.max(T.body, INPUT_FONT_MIN), textAlign:"center", outline:"none"}}
         type="number" placeholder="—" value={manualForm.special} min={1} max={manualForm.game === "pb" ? 26 : 25}
         onChange={e => setManualForm({...manualForm, special: e.target.value})} />
     </div>
@@ -797,7 +825,7 @@ export default function App() {
               </div>
               {filtered.length===0 ? (
                 <div style={S.emptyState}>
-                  <div style={{fontSize:40,marginBottom:16,opacity:0.3}}>🎟️</div>
+                  <div style={{fontSize:ICON_SIZE.emptyHero,marginBottom:16,opacity:0.3}}>🎟️</div>
                   <div style={S.emptyStateTitle}>No tickets yet</div>
                   <div style={S.emptyStateText}>Save a ticket from the Quick Pick tab</div>
                 </div>
@@ -837,17 +865,17 @@ export default function App() {
                             onChange={e=>setEditValues({...editValues,[t.id]:{...(editValues[t.id]||{}),notes:e.target.value}})} />
                         </div>
                         <div style={{display:"flex",flexDirection:"column",gap:4,paddingTop:14}}>
-                          <button onClick={()=>saveTicketEdit(t.id)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#7c6aff",color:"white",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Save</button>
-                          <button onClick={()=>{setExpandedTicket(null);setEditValues({});}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2a2a38",background:"transparent",color:"#6b6b82",fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Cancel</button>
+                          <button onClick={()=>saveTicketEdit(t.id)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#7c6aff",color:"white",fontSize:T.small,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Save</button>
+                          <button onClick={()=>{setExpandedTicket(null);setEditValues({});}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2a2a38",background:"transparent",color:"#6b6b82",fontSize:T.small,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Cancel</button>
                         </div>
                       </div>
                     ) : (
                       <div style={{marginTop:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <div style={{fontSize:11,color:"#6b6b82",fontFamily:"'DM Mono',monospace"}}>
+                        <div style={{fontSize:T.small,color:"#6b6b82",fontFamily:"'DM Mono',monospace"}}>
                           {t.stake > 0 ? `$${t.stake.toFixed(2)} wagered${t.payout > 0 ? ` · $${t.payout.toFixed(2)} won` : ""}` : ""}
                         </div>
                         <button onClick={()=>{setExpandedTicket(t.id);setEditValues({[t.id]:{stake:t.stake,payout:t.payout,notes:t.notes||""}});}}
-                          style={{fontSize:11,color:"#6b6b82",background:"transparent",border:"1px solid #2a2a38",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+                          style={{fontSize:T.small,color:"#6b6b82",background:"transparent",border:"1px solid #2a2a38",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
                           Edit
                         </button>
                       </div>
@@ -870,9 +898,9 @@ export default function App() {
                 <div style={S.statCard}><div style={S.statValue(stats.net>=0?"#3ecf8e":"#e8364a")}>{stats.net>=0?"+":""}{stats.net.toFixed(2)}</div><div style={S.statLabel}>Net</div></div>
               </div>
               <div style={S.freqTitle}>🔥 Most Picked Numbers</div>
-              <div style={S.freqGrid}>{sorted.length===0?<span style={{color:"#6b6b82",fontSize:12}}>No data yet</span>:sorted.slice(0,8).map(([n])=><div key={n} style={S.freqBall(true)}>{n}</div>)}</div>
+              <div style={S.freqGrid}>{sorted.length===0?<span style={{color:"#6b6b82",fontSize:T.small}}>No data yet</span>:sorted.slice(0,8).map(([n])=><div key={n} style={S.freqBall(true)}>{n}</div>)}</div>
               <div style={S.freqTitle}>❄️ Least Picked Numbers</div>
-              <div style={S.freqGrid}>{sorted.length===0?<span style={{color:"#6b6b82",fontSize:12}}>No data yet</span>:sorted.slice(-8).reverse().map(([n])=><div key={n} style={S.freqBall(false)}>{n}</div>)}</div>
+              <div style={S.freqGrid}>{sorted.length===0?<span style={{color:"#6b6b82",fontSize:T.small}}>No data yet</span>:sorted.slice(-8).reverse().map(([n])=><div key={n} style={S.freqBall(false)}>{n}</div>)}</div>
               <div style={{...S.disclaimer, marginTop:32}}>
                 <div style={S.disclaimerText}>Stats are based on your saved tickets only. Frequency tracking is for personal interest — it does not affect future lottery draws.</div>
               </div>
@@ -886,7 +914,7 @@ export default function App() {
               </div>
               {leaderboard.length===0 ? (
                 <div style={S.emptyState}>
-                  <div style={{fontSize:40,marginBottom:16,opacity:0.3}}>🏆</div>
+                  <div style={{fontSize:ICON_SIZE.emptyHero,marginBottom:16,opacity:0.3}}>🏆</div>
                   <div style={S.emptyStateTitle}>No players yet — set a username to be first.</div>
                 </div>
               ) : (
@@ -917,7 +945,7 @@ export default function App() {
         </div>
 
         {toast && (
-          <div style={{ position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)", background:"#1c1c26", border:"1px solid #2a2a38", borderRadius:12, padding:"14px 24px", fontSize:13, fontWeight:500, color:"#3ecf8e", boxShadow:"0 8px 32px rgba(0,0,0,0.5)", whiteSpace:"nowrap", zIndex:100 }}>
+          <div style={{ position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)", background:"#1c1c26", border:"1px solid #2a2a38", borderRadius:12, padding:"14px 24px", fontSize:T.body, fontWeight:500, color:"#3ecf8e", boxShadow:"0 8px 32px rgba(0,0,0,0.5)", whiteSpace:"nowrap", zIndex:100 }}>
             {toast}
           </div>
         )}
