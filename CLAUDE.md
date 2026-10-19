@@ -5,7 +5,7 @@ The Technical Master Plan and Orientation Reference (docx) hold strategy and rat
 this file holds facts. When they conflict, this file wins. Update this file at the end
 of any session that changes architecture, schema, secrets, or workflows.
 
-Last updated: 2026-10-19 (cron schedule changed; launch-prep phase in progress)
+Last updated: 2026-10-19 (launch-prep Day 1: readability + signup path shipped)
 
 ## What this is
 
@@ -21,6 +21,18 @@ get results checked automatically. Entertainment tool — never claim improved o
   picklogic.vercel.app. Preview URLs are frozen snapshots — never use them to verify updates.
 - **Backend:** Supabase project "PickLogic" (`jehqbmchbveyiqdvdyua.supabase.co`).
   Auth (email/password only), Postgres, edge functions, cron.
+- **Auth:** email/password. Email confirmation TURNED OFF 2026-10-19 — email is still
+  REQUIRED at signup, just not verified. Reason: Supabase built-in SMTP is 2/hour
+  and testing-only, so confirmation emails would silently fail to reach strangers.
+  Confirmation returns alongside email reminders, once domain + Resend are live.
+  Observed once (test account, since deleted) that email_confirmed_at IS populated
+  at signup with confirmation off, which would make re-enabling safe for accounts
+  created in the meantime. Single observation, not proven — re-verify on the first
+  real stranger signup before flipping it back on.
+  RE-ENABLING CHECKLIST: restoring confirmation also requires restoring signup
+  feedback copy. With confirmation ON, signUp returns no error and no session, and
+  the current AuthScreen shows the user nothing at all. The `success` state and
+  `authSuccess` banner were deliberately left in place for this.
 - **Deploy (edge functions):** SEPARATE from git chain. `npx supabase functions deploy bright-api`.
   CLI is a dev dependency (`npx supabase ...`), linked to the project. Docker warnings on deploy are harmless.
 - **Email:** Resend account exists; domain verification NOT done. No email features built.
@@ -154,16 +166,17 @@ Rules: never hardcode secrets in source; never print secret values in sessions; 
 - Missed cron nights create permanent draw gaps — the function only fetches the latest draw per
   game, it doesn't backfill. Open tickets behind a gap never settle on their own. Draw history
   starts 2026-06-03 (two June rows: pb 06-03, mm 06-05), then a gap until mm 2026-07-03, then
-  continuous. See "Next up" for the planned fix. June-era relic tickets caught by an old gap
+  continuous. Planned fix (seed + self-heal) is in the "Deprioritized" note under
+  "Current status & next up". June-era relic tickets caught by an old gap
   were deleted. Update: 78 rows as of 2026-10-19. Gaps are the June block (06-06 through 07-01, 19 draws)
   and pb 2026-09-12. The 09-12 loss traces to a run on 09-14 that saved nothing for either game;
   the next run found pb latest = 09-14 and skipped it.
 - GAPS ARE NOT ALWAYS CRON FAILURES. Diagnosed 2026-08-07 on a missing pb 2026-08-05: cron fired
   on schedule and the function returned HTTP 200 with
   `{"ok":true,"saved":["pb 2026-08-03","mm 2026-08-04"],...}` — it ran fine, but the feed had not
-  yet published Wednesday's draw. Powerball draws 02:59 UTC; cron runs 04:00 UTC, ~1 hour later,
-  which sits right on the edge of the feed's publish window. Most weeks it wins, some weeks it
-  doesn't. Update 2026-10-19 pb 2026-08-05 is no longer missing. It landed 2026-08-08 at 04:00, three days late.
+  yet published Wednesday's draw. Powerball draws 02:59 UTC; cron ran at 04:00 UTC at the time, ~1 hour later,
+  which sat right on the edge of the feed's publish window. Most weeks it won, some weeks it
+  didn't. Update 2026-10-19 pb 2026-08-05 is no longer missing. It landed 2026-08-08 at 04:00, three days late.
   cron was moved  to `0 6` UTC on 2026-09-20.
   SELF-HEAL RULE: a late-publishing draw recovers on its own ONLY if a later run
   fires before that game's next draw publishes. Otherwise the gap is permanent.
@@ -224,6 +237,35 @@ Rules: never hardcode secrets in source; never print secret values in sessions; 
 - Leaderboard UI (task 7): new nav tab, top 25 from the `leaderboard` view, current user's row
   highlighted if present, own rank fetched and pinned separately if outside the top 25. Ranking
   is lifetime points — v1, locked decision (no seasons/resets yet).
+- **Type scale is module-scope and is the single source of truth (added 2026-10-19).** Declared
+  above `S`: `T = { micro: 11, small: 13, body: 15, strong: 17, title: 22, display: 30 }`.
+  Every text `fontSize` in `S` and in inline `style={{...}}` references a token — zero
+  untokenized `fontSize` as of the 2026-10-19 commits. Rule going forward: no bare pixel font sizes.
+  - `INPUT_FONT_MIN = 16`, applied as `Math.max(token, INPUT_FONT_MIN)` on every interactive
+    input (`S.formInput`, `S.usernameInput`, `S.ticketEditInput`, the inline manual-entry
+    number circles). Reason: iOS Safari auto-zooms the page when a focused input is under 16px.
+    It is a floor, not a scale token.
+  - `FORM_HINT_GAP = 6` — gap between an input and the helper line under it (`S.formHint`);
+    the hint then carries `S.formInput.marginBottom`. No negative margins.
+  - `ICON_SIZE = { banner: 16, empty: 32, emptyHero: 40 }` — decorative emoji/glyphs, kept
+    deliberately out of `T` because they are not text.
+- **Inline styles cannot carry media queries.** Viewport response uses `clamp()` inside the
+  style value, built from tokens (e.g. `` `clamp(${T.small}px, 3.6vw, ${T.body}px)` ``). There is
+  no CSS file; adding one is a separate decision.
+- Layout width: `S.app.maxWidth` is 600 (was 480). `authBox` deliberately left at `maxWidth: 400`.
+  A true desktop layout would be a redesign, not a tweak.
+- Layout fixes 2026-10-19 (from the readability checkpoint): nav tab label renamed
+  "Leaderboard" → "Leaders" (view key `"leaderboard"` and the page heading unchanged) so four
+  tabs fit on a 375px phone; `navBtn` (`padding: "10px 4px"`) and `statValue` use `clamp()`;
+  `statCard` has `minWidth: 0`; the ticket edit button stack uses `alignSelf: "flex-end"`
+  instead of a hardcoded `paddingTop`.
+- `EMAIL_DOMAIN_TYPOS` + `emailTypoWarning(email)` — module-scope typo guard for common mail
+  domain misspellings, returns `Did you mean <local>@<fix>?` or null. SIGNUP ONLY (a login typo
+  already fails with Supabase's invalid-credentials error; the harm is only at signup, where a
+  bad address permanently breaks password recovery now that confirmation is off). Follows the
+  `nonDrawDayWarning` pattern: SOFT, first submit arms the banner (`S.drawDayWarning`, button
+  reads "Create account anyway"), second submit proceeds. Armed token is the exact email
+  string, so editing re-arms. Never blocks.
 
 ## Conventions & working agreements
 
@@ -253,6 +295,11 @@ Rules: never hardcode secrets in source; never print secret values in sessions; 
   (`supabase db push` fails with a role-provisioning permission error on this project)
 - Build gate `CI=true npm run build` is run by J. Cowork's shell caps at 45s and CRA needs longer
   over the mount; Cowork can only static-check (parse + symbol/brace audit).
+- **Splitting mixed changes into separate commits:** when a second task lands in the same file
+  before the first is committed, Cowork writes the second task's changes as a patch file
+  (verified with `git apply --check -R`). J runs `git apply -R <patch>` → gate → commit task 1,
+  then `git apply <patch>` → gate → commit task 2, then deletes the untracked patch. Worked
+  cleanly 2026-10-19.
 - Update this file + commit at the end of any session that changes ground truth; J re-uploads it to the Claude.ai project
 
 ## Current status & next up
@@ -279,26 +326,24 @@ Next up: LAUNCH PREP. Goal changed 2026-10-19: launch = a public website
 strangers can sign up for and use. App Store is an explicitly later phase.
 
 Blocking launch:
-1. Readability — maxWidth 480 phone layout on desktop; type scale bottoms out
-   at 9-10px; no media queries, rem, vw or clamp anywhere in App.js
+1. Readability — DONE 2026-10-19 (type scale, 16px inputs, maxWidth 600, clamp()
+   on nav and stats). See "Frontend logic worth knowing".
 2. Auth email — Supabase built-in SMTP is 2 emails/hour and testing-only.
    Decision 2026-10-19: ship with email confirmation OFF; email still required
    at signup. Confirmation returns alongside email reminders, once the domain
-   and Resend are live.
+   and Resend are live. DONE 2026-10-19: confirmation off, confirmation copy
+   removed, signup email typo guard added. See "Auth" under Stack & deploy chains.
 3. Privacy policy + ToS before sharing the link widely
 
 Deprioritized: draw history seed + self-heal. Still worth doing (pb 2026-09-12
 and the June block stay permanent holes), but it protects history that no
 current user has tickets behind. Cron is stable; new gaps are not accumulating.
 Open question still unanswered: does lotteryresultsfeed.com support
-fetch-by-date? Nothing recorded either way.
+fetch-by-date? Nothing recorded either way. When it happens, the seed lands into
+a clean schema: both `draw_date` columns are real `date` types.
 
-Also deferred: ticket scanner (wanted, post-launch), multi-ticket quick pick,
-spending tracker, Stripe.
-
-The seed lands into a clean schema now: both `draw_date` columns are real `date` types, so
-Postgres rejects malformed rows at insert time instead of J hand-cleaning TEXT afterward. That
-was the whole point of doing the date integrity phase first.
+Deferred (post-launch): ticket scanner (wanted), multi-ticket quick pick,
+spending tracker, syndicate tracking, Stripe paywall.
 
 Backlog (do not build now):
 - Memoize session-gated loads (`loadTickets`, `loadCheckinStatus`, `loadProfile`) against
@@ -307,7 +352,15 @@ Backlog (do not build now):
 - Settle-on-demand after manual ticket save (invoke the idempotent settlement sweep right after
   a manual entry, for instant feedback) — optional UX polish only; do NOT use this as a reason to
   add a second place that interprets match results, the three-way sync note still applies.
+- Manual-entry number inputs accept any length (e.g. 8867). Save-time validation rejects
+  out-of-range values, so data is safe, but `onChange` should cap input at 2 digits. Note
+  `min`/`max` on `type="number"` do not restrict typing. (Phone review 2026-10-19.)
+- Manual-entry circles render slightly oval on iOS. Likely default input appearance/padding
+  against the fixed 48px size. Same code block as the item above; fix together.
+- Ticket edit row: Notes-on-own-line change deferred. Needs a markup reorder (Notes precedes
+  the button stack), not a style tweak.
+- Total Spent of $1,000+ may sit at the stat card edge on a 375px phone even with the clamp.
+  Unverified.
 
-Later backlog: multi-ticket quick pick, spending tracker, syndicate tracking, Stripe paywall.
 Email reminders (Resend domain verification still pending) deliberately deferred — resume before
 Stripe phase.
