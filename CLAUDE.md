@@ -5,7 +5,7 @@ The Technical Master Plan and Orientation Reference (docx) hold strategy and rat
 this file holds facts. When they conflict, this file wins. Update this file at the end
 of any session that changes architecture, schema, secrets, or workflows.
 
-Last updated: 2026-10-19 (launch-prep Day 1: readability + signup path shipped)
+Last updated: 2026-10-19 (launch-prep Day 2: computed next-draw date, tickets FK fix, legal pages)
 
 ## What this is
 
@@ -25,10 +25,11 @@ get results checked automatically. Entertainment tool — never claim improved o
   REQUIRED at signup, just not verified. Reason: Supabase built-in SMTP is 2/hour
   and testing-only, so confirmation emails would silently fail to reach strangers.
   Confirmation returns alongside email reminders, once domain + Resend are live.
-  Observed once (test account, since deleted) that email_confirmed_at IS populated
-  at signup with confirmation off, which would make re-enabling safe for accounts
-  created in the meantime. Single observation, not proven — re-verify on the first
-  real stranger signup before flipping it back on.
+  Observed twice that email_confirmed_at IS populated at signup with confirmation
+  off: a test account (since deleted), and a real stranger signup on 2026-10-19.
+  That would make re-enabling safe for accounts created in the meantime. Two
+  observations, consistent but still not a guarantee — spot-check a recent signup
+  before flipping it back on.
   RE-ENABLING CHECKLIST: restoring confirmation also requires restoring signup
   feedback copy. With confirmation ON, signUp returns no error and no session, and
   the current AuthScreen shows the user nothing at all. The `success` state and
@@ -40,9 +41,13 @@ get results checked automatically. Entertainment tool — never claim improved o
 
 ## Database schema (public)
 
-- **tickets** — id, user_id (FK auth.users), game ("pb"/"mm"), numbers int[], special int,
+- **tickets** — id, user_id (FK `tickets_user_id_fkey` → auth.users ON DELETE CASCADE), game ("pb"/"mm"), numbers int[], special int,
   pick_mode, draw_date (**`date`**, nullable), stake, payout, status ("open"/"won"/"lost"), notes, created_at.
   RLS: single ALL policy, `auth.uid() = user_id` on both USING and WITH CHECK. Verified correct — do not modify.
+  The user_id FK was MISSING until 2026-10-19 (this file used to claim it existed; pg_constraint
+  showed tickets had no foreign keys, so deleting a user orphaned their tickets). Added by migration
+  `20261019190000_tickets_user_id_fkey.sql`, verified via pg_constraint: CASCADE. Account deletion
+  now removes tickets, which the privacy policy promises.
   `draw_date` was migrated TEXT → `date` on 2026-08-07 (migration
   `20260807093000_tickets_draw_date_to_date.sql`). Postgres now rejects malformed dates at
   insert time. No index on draw_date; no view or constraint depends on it.
@@ -266,6 +271,27 @@ Rules: never hardcode secrets in source; never print secret values in sessions; 
   `nonDrawDayWarning` pattern: SOFT, first submit arms the banner (`S.drawDayWarning`, button
   reads "Create account anyway"), second submit proceeds. Armed token is the exact email
   string, so editing re-arms. Never blocks.
+- **Next draw date is computed, not typed (2026-10-19).** Module-scope `nextDrawDate(game, now)`
+  (returns the official ET calendar date as `YYYY-MM-DD`) and `nextDrawLabel(game, now, viewerToday)`
+  (returns "Tonight" or e.g. "Wed, Oct 21"), plus `DRAW_TZ` and `DRAW_CUTOFF_HOUR_ET = 23`. Uses
+  `DRAW_DAYS`; do not re-declare draw weekdays. TWO ANCHORS ON PURPOSE, do not collapse them:
+  which draw is next = America/New_York via `Intl` (at/after 23:00 ET today's draw is over);
+  whether to say "Tonight" = the viewer's local date (`toLocalDateString`). At Mon 9pm PT it is
+  already Tue in ET, so mm shows "Tue, Oct 20", not "Tonight". `viewerToday` is injectable so
+  tests can run Eastern-viewer rows on a Pacific machine. Label is computed per render, so a tab
+  left open across a cutoff updates on the next re-render. `src/config.js` now holds jackpot
+  AMOUNTS only (still manual). `getDrawReminders()` was not touched and still uses local dates.
+- **Legal pages (2026-10-19).** Static files `public/privacy.html` and `public/terms.html`, served
+  by Vercel as plain files (picklogic.vercel.app/privacy.html, /terms.html), no router. Effective
+  date October 20, 2026; contact picklogichelp@gmail.com. Linked from the AuthScreen signup tab
+  (agreement line under Create Account) and from "Terms · Privacy" inside the Quick Pick
+  disclaimer box. The disclaimer ends with the Washington State Problem Gambling Helpline,
+  1-800-547-6133 (Evergreen Council on Problem Gambling). Do NOT swap in 1-800-GAMBLER. The policy
+  must describe what the code does: it discloses Google Fonts, which App.js loads via `<link>` on
+  every screen including the login screen. If fonts are ever self-hosted or other third-party
+  scripts are added, update privacy.html in the same commit. Fact-checked 2026-10-19: no analytics
+  or ad scripts; the Supabase session is in localStorage (supabase-js defaults); the app has no other
+  browser storage. The leaderboard view exposes only username, points, rank (username not null).
 
 ## Conventions & working agreements
 
@@ -283,9 +309,9 @@ Rules: never hardcode secrets in source; never print secret values in sessions; 
   Git now stores LF and checks out CRLF on Windows; `LF will be replaced by CRLF` on `git add`
   is CORRECT behavior, not a relapse.
 - Step-by-step with confirmation checkpoints; one commit per task; stop and flag ambiguity rather than improvise
-- **Verify against actual code and against the live catalogs, not spec or this file.** Four claims
-  have now turned out wrong on inspection — including two IN THIS FILE (`draws.draw_date` is
-  TEXT; "joins currently need casts"). Treat this file as high-quality but fallible.
+- **Verify against actual code and against the live catalogs, not spec or this file.** Five claims
+  have now turned out wrong on inspection — including three IN THIS FILE (`draws.draw_date` is
+  TEXT; "joins currently need casts"; `tickets.user_id` is "FK auth.users"). Treat this file as high-quality but fallible.
 - New feature phases start in a fresh Claude.ai chat
 - Supabase dashboard steps (secrets, cron, SQL editor) are done by J — hand them over explicitly
 - Cowork has a read-only, project-scoped Supabase MCP connector for recon and verification:
@@ -333,7 +359,13 @@ Blocking launch:
    at signup. Confirmation returns alongside email reminders, once the domain
    and Resend are live. DONE 2026-10-19: confirmation off, confirmation copy
    removed, signup email typo guard added. See "Auth" under Stack & deploy chains.
-3. Privacy policy + ToS before sharing the link widely
+3. Privacy policy + ToS — DONE 2026-10-19 (static pages in public/, linked from signup
+   and the Quick Pick disclaimer; depends on the tickets FK above). See "Legal pages".
+
+From the first real user test (2026-10-19): the tester signed up but saved 0 tickets and asked
+whether they could check a ticket without saving. NEXT FEATURE PHASE: a logged-out ticket
+checker as the front door (spec it in a fresh Claude.ai chat). The scanner later becomes an input
+method for the same checker. Also: manual entry is hard to find (only under My Tickets).
 
 Deprioritized: draw history seed + self-heal. Still worth doing (pb 2026-09-12
 and the June block stay permanent holes), but it protects history that no
