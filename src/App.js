@@ -304,6 +304,8 @@ const S = {
   drawDayWarning: { padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(245,166,35,0.4)", background: "rgba(245,166,35,0.12)", color: "#f5a623", fontSize: T.small, lineHeight: 1.5, marginTop: 4 },
   disclaimer: { marginTop: 28, padding: 16, borderRadius: 12, border: "1px solid #2a2a38", background: "#13131a" },
   disclaimerText: { fontSize: T.small, color: "#6b6b82", lineHeight: 1.6, textAlign: "center" },
+  legalNote: { fontSize: T.small, color: "#6b6b82", lineHeight: 1.5, textAlign: "center", marginTop: 14 },
+  legalLink: { color: "#7c6aff", textDecoration: "underline" },
   histHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 },
   histTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.title, color: "#f0f0f5" },
   ticketCount: { fontFamily: "'DM Mono', monospace", fontSize: T.small, color: "#6b6b82", background: "#13131a", border: "1px solid #2a2a38", padding: "4px 10px", borderRadius: 20 },
@@ -401,6 +403,11 @@ function AuthScreen() {
           <button style={S.btnSave} onClick={handleSubmit} disabled={loading}>
             {loading ? "Please wait..." : tab === "login" ? "Log In" : typoWarnArmed ? "Create account anyway" : "Create Account"}
           </button>
+          {tab === "signup" && (
+            <div style={S.legalNote}>
+              By creating an account, you agree to the <a href="/terms.html" style={S.legalLink}>Terms of Service</a> and <a href="/privacy.html" style={S.legalLink}>Privacy Policy</a>.
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -814,7 +821,10 @@ export default function App() {
                 </div>
               )}
               <div style={S.disclaimer}>
-                <div style={S.disclaimerText}>PickLogic is an entertainment tool. Pick strategies are for fun — they do not improve your odds of winning. Please play responsibly.</div>
+                <div style={S.disclaimerText}>PickLogic is an entertainment tool. Pick strategies are for fun — they do not improve your odds of winning. Please play responsibly. Problem gambling help: 1-800-547-6133.</div>
+                <div style={{ ...S.disclaimerText, marginTop: 8 }}>
+                  <a href="/terms.html" style={S.legalLink}>Terms</a> · <a href="/privacy.html" style={S.legalLink}>Privacy</a>
+                </div>
               </div>
             </div>
           )}
