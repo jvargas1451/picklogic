@@ -90,6 +90,51 @@ function nonDrawDayWarning(game, str) {
   return `Heads up — ${GAMES[game].name} doesn't draw on ${WEEKDAY_NAMES[dt.getDay()]}. Save anyway?`;
 }
 
+// ── Next draw ─────────────────────────────────────────────────
+// Two anchors, on purpose. Do not collapse them into one.
+//   WHICH draw is next  -> America/New_York. Draws are Eastern-time events
+//     (Powerball 10:59pm ET, Mega Millions 11:00pm ET) and the official draw
+//     DATE is the ET calendar date. Intl handles DST; no hand-rolled offsets.
+//   WHETHER to say "Tonight" -> the viewer's local calendar day. At Mon 9pm
+//     Pacific it is already Tue in ET, but a Pacific viewer's Tuesday draw is
+//     tomorrow night, not tonight.
+// Other anchors in the app (check-in = Los Angeles, getDrawReminders and ticket
+// draw dates = viewer local, cron = UTC) are separate rules. Leave them alone.
+const DRAW_TZ = "America/New_York";
+const DRAW_CUTOFF_HOUR_ET = 23; // at/after 23:00 ET today's draw is over
+
+// Official date (YYYY-MM-DD, ET calendar) of the next draw for a game.
+function nextDrawDate(game, now = new Date()) {
+  const parts = {};
+  new Intl.DateTimeFormat("en-US", {
+    timeZone: DRAW_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", hourCycle: "h23",
+  }).formatToParts(now).forEach(p => { parts[p.type] = p.value; });
+  const y = Number(parts.year), m = Number(parts.month), d = Number(parts.day);
+  const hour = Number(parts.hour);
+  const days = DRAW_DAYS[game] || [];
+  // Walk forward from the ET calendar date. Pure UTC arithmetic on a bare
+  // calendar date, so there is no DST involved in the day stepping.
+  for (let i = 0; i <= 7; i++) {
+    const c = new Date(Date.UTC(y, m - 1, d + i));
+    if (!days.includes(c.getUTCDay())) continue;
+    if (i === 0 && hour >= DRAW_CUTOFF_HOUR_ET) continue;
+    return `${c.getUTCFullYear()}-${String(c.getUTCMonth() + 1).padStart(2, "0")}-${String(c.getUTCDate()).padStart(2, "0")}`;
+  }
+  return null;
+}
+
+// Card label: "Tonight" if the draw date is the viewer's local today, else
+// "Wed, Oct 21". viewerToday is injectable (YYYY-MM-DD) for tests; by default
+// it is the device's local date via toLocalDateString, never toISOString.
+function nextDrawLabel(game, now = new Date(), viewerToday = toLocalDateString(now)) {
+  const str = nextDrawDate(game, now);
+  const dt = parseLocalDate(str);
+  if (!dt) return "";
+  if (str === viewerToday) return "Tonight";
+  return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
 // ── Email typo guard ──────────────────────────────────────────
 // Common misspellings of major mail domains. Email confirmation is off, so a
 // mistyped address would silently break password recovery. Single source of
@@ -698,7 +743,7 @@ export default function App() {
                     <div style={S.gameName(key)}>{g.name}</div>
                     <div style={S.gameOdds}>{key==="pb"?"1 in 292,201,338":"1 in 302,575,350"}</div>
                     <div style={S.gameJackpot}>{config.jackpots[key]}</div>
-                    <div style={S.gameNextDraw}>Next: {config.nextDraw[key]}</div>
+                    <div style={S.gameNextDraw}>Next: {nextDrawLabel(key)}</div>
                   </div>
                 ))}
               </div>
