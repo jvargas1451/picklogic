@@ -95,6 +95,20 @@ function nonDrawDayWarning(game, str) {
   return `Heads up — ${GAMES[game].name} doesn't draw on ${WEEKDAY_NAMES[dt.getDay()]}. Save anyway?`;
 }
 
+// "Powerball draws Mon, Wed and Sat". Used as the HARD error when checking a
+// non-draw day (no result can exist). Saving keeps the soft warning above.
+function drawDaysLabel(game) {
+  const names = (DRAW_DAYS[game] || []).map(d => WEEKDAY_NAMES[d].slice(0, 3));
+  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names.join("");
+  return `${GAMES[game].name} draws ${list}`;
+}
+
+// "Wed, Oct 21" for a YYYY-MM-DD draw date, or the raw string if unparseable.
+function formatDrawDate(str) {
+  const dt = parseLocalDate(str);
+  return dt ? dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : str;
+}
+
 // ── Next draw ─────────────────────────────────────────────────
 // Two anchors, on purpose. Do not collapse them into one.
 //   WHICH draw is next  -> America/New_York. Draws are Eastern-time events
@@ -236,6 +250,7 @@ const PRIZES = {
 };
 
 const SPECIAL_ABBR = { pb: "PB", mm: "MB" };
+const SPECIAL_NAME = { pb: "Powerball", mm: "Mega Ball" };
 
 function prizeTierKey(matchedMain, matchedSpecial) {
   return `${matchedMain}+${matchedSpecial ? 1 : 0}`;
@@ -248,7 +263,9 @@ function formatPrize(n) {
 }
 
 // Label for a non-jackpot winning tier. Kept short to fit one line on a 375px card.
-function prizeLabel(game, key) {
+// `multiplier` (optional, mm only): the ticket's printed multiplier. When given,
+// the label shows the exact amount ("$1,000 at 5X") instead of the range.
+function prizeLabel(game, key, multiplier) {
   const tier = PRIZES[game][key];
   const [main, special] = key.split("+").map(Number);
   const abbr = SPECIAL_ABBR[game];
@@ -256,6 +273,9 @@ function prizeLabel(game, key) {
     : special ? `Matched ${main} + ${abbr}` : `Matched ${main}`;
   const m = tier.multiplier;
   if (m.type === "built-in") {
+    if (multiplier && m.values.includes(multiplier)) {
+      return `${name} · ${formatPrize(tier.base * multiplier)} at ${multiplier}X`;
+    }
     const lo = Math.min(...m.values), hi = Math.max(...m.values);
     return `${name} · ${formatPrize(tier.base * lo)} to ${formatPrize(tier.base * hi)}`;
   }
@@ -272,8 +292,14 @@ const RESULT_STYLE = {
   none: { color: "#6b6b82", bg: "rgba(107,107,130,0.1)", border: "#2a2a38" },
 };
 
-function checkResult(ticket, draws) {
-  const draw = draws.find(d => d.game === ticket.game && d.draw_date === ticket.draw_date);
+function findDraw(draws, game, drawDate) {
+  return draws.find(d => d.game === game && d.draw_date === drawDate) || null;
+}
+
+// The ONLY place in App.js that decides win/lose (via PRIZES). See SYNC NOTE.
+// `multiplier` only changes the label wording, never the outcome.
+function checkResult(ticket, draws, multiplier) {
+  const draw = findDraw(draws, ticket.game, ticket.draw_date);
   if (!draw) return null;
   const table = PRIZES[ticket.game];
   if (!table) return null;
@@ -283,9 +309,59 @@ function checkResult(ticket, draws) {
   const key = prizeTierKey(matchedMain, matchedSpecial);
   const tier = table[key];
 
-  if (!tier) return { label: "No match", ...RESULT_STYLE.none };
-  if (tier.base === null) return { label: "🏆 JACKPOT", ...RESULT_STYLE.jackpot };
-  return { label: prizeLabel(ticket.game, key), ...RESULT_STYLE.win };
+  if (!tier) return { tier: "none", label: "No match", ...RESULT_STYLE.none };
+  if (tier.base === null) return { tier: "jackpot", label: "🏆 JACKPOT", ...RESULT_STYLE.jackpot };
+  return { tier: "win", label: prizeLabel(ticket.game, key, multiplier), ...RESULT_STYLE.win };
+}
+
+// ── Ticket checker ────────────────────────────────────────────
+// One form for checking a ticket and (logged in) saving it. Numbers are kept as
+// strings while typing; validateTicketForm turns them into a ticket object.
+const EMPTY_TICKET_FORM = { game: "pb", numbers: ["", "", "", "", ""], special: "", drawDate: "", multiplier: "", notes: "" };
+
+// Most recent draw date on file for a game (YYYY-MM-DD), or "" if none loaded.
+function latestDrawDate(draws, game) {
+  return draws.filter(d => d.game === game).reduce((max, d) => (d.draw_date > max ? d.draw_date : max), "");
+}
+
+// Digits only, at most 2. min/max on an input do not restrict typing.
+function cleanNumberInput(value) {
+  return String(value).replace(/\D/g, "").slice(0, 2);
+}
+
+// Returns { error } or { ticket: { game, numbers, special, draw_date } }.
+// Range rules read GAMES; date rules are validateDrawDate. Shared by Check and Save.
+function validateTicketForm(form) {
+  const g = GAMES[form.game];
+  const specialName = SPECIAL_NAME[form.game];
+  const nums = form.numbers.map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+  const special = parseInt(form.special, 10);
+  if (nums.length !== g.mainCount) return { error: `Enter all ${g.mainCount} main numbers` };
+  if (isNaN(special)) return { error: `Enter the ${specialName}` };
+  if (nums.some(n => n < g.main[0] || n > g.main[1])) return { error: `Main numbers must be ${g.main[0]} to ${g.main[1]}` };
+  if (new Set(nums).size !== nums.length) return { error: "Numbers must be unique" };
+  if (special < g.special[0] || special > g.special[1]) return { error: `${specialName} must be ${g.special[0]} to ${g.special[1]}` };
+  const dateError = validateDrawDate(form.drawDate);
+  if (dateError) return { error: dateError };
+  return { ticket: { game: form.game, numbers: [...nums].sort((a, b) => a - b), special, draw_date: form.drawDate } };
+}
+
+// What a Check shows. Fields that change WHICH ticket is checked; the multiplier
+// and notes are left out on purpose so changing them keeps the result on screen.
+function checkKey(form) {
+  return JSON.stringify([form.game, form.numbers, form.special, form.drawDate]);
+}
+
+// Outcome for a validated ticket. Win/lose comes only from checkResult.
+// No row: on/after the latest draw on file = not in yet; earlier = a gap we can't fill.
+function checkTicketOutcome(ticket, draws, multiplier) {
+  const result = checkResult(ticket, draws, multiplier);
+  if (result) return { kind: "result", result, draw: findDraw(draws, ticket.game, ticket.draw_date) };
+  const latest = latestDrawDate(draws, ticket.game);
+  if (!latest || ticket.draw_date >= latest) {
+    return { kind: "pending", msg: `Results for ${formatDrawDate(ticket.draw_date)} aren't in yet. We add new results every morning.` };
+  }
+  return { kind: "missing", msg: `We don't have results for this draw. Check the official ${GAMES[ticket.game].name} site.` };
 }
 
 // ── Type scale ────────────────────────────────────────────────
@@ -308,6 +384,10 @@ const INPUT_FONT_MIN = 16;
 // Gap between an input and the helper line directly under it. The hint then
 // carries the field's normal bottom margin (S.formInput.marginBottom).
 const FORM_HINT_GAP = 6;
+
+// Checker number circles. 44px is the minimum comfortable tap target, and six
+// of them plus the "+" fit one row inside the 335px content width at 375px.
+const CHECKER_BALL_SIZE = 44;
 
 const ICON_SIZE = {
   banner: 16,    // draw-reminder ticket glyph
@@ -356,6 +436,16 @@ const S = {
   emptyText: { color: "#6b6b82", fontSize: T.body },
   btnPrimary: (type) => ({ width: "100%", padding: 16, borderRadius: 14, border: "none", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.strong, cursor: "pointer", background: type === "pb" ? "#e8364a" : "#f5a623", color: type === "pb" ? "white" : "#0a0a0f", boxShadow: type === "pb" ? "0 4px 24px rgba(232,54,74,0.3)" : "0 4px 24px rgba(245,166,35,0.3)", transition: "all 0.2s" }),
   btnSecondary: { width: "100%", padding: 14, borderRadius: 14, border: "1px solid #2a2a38", background: "transparent", color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: T.body, cursor: "pointer", marginTop: 10, transition: "all 0.2s" },
+  checkerGameRow: { display: "flex", gap: 8, marginBottom: 16 },
+  checkerGameBtn: (active, key) => ({ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${active ? (key === "pb" ? "#e8364a" : "#f5a623") : "#2a2a38"}`, background: active ? "#1c1c26" : "transparent", color: active ? (key === "pb" ? "#e8364a" : "#f5a623") : "#6b6b82", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.body, cursor: "pointer" }),
+  checkerNumLabels: { display: "flex", justifyContent: "space-between", fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 },
+  checkerBallsRow: { display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap", marginBottom: 16 },
+  // appearance/padding/boxSizing reset is the iOS oval fix: Safari's default
+  // input padding and appearance stretched the fixed-size circle.
+  checkerBall: (type) => ({ width: CHECKER_BALL_SIZE, height: CHECKER_BALL_SIZE, flex: "0 0 auto", boxSizing: "border-box", padding: 0, margin: 0, borderRadius: "50%", WebkitAppearance: "none", MozAppearance: "textfield", appearance: "none", background: type === "main" ? "#1c1c26" : type === "pb" ? "#e8364a" : "#f5a623", border: type === "main" ? "1.5px solid #2a2a38" : "none", color: type === "mm" ? "#0a0a0f" : type === "pb" ? "white" : "#f0f0f5", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: Math.max(T.body, INPUT_FONT_MIN), textAlign: "center", outline: "none" }),
+  checkerResult: { marginTop: 20, paddingTop: 16, borderTop: "1px solid #2a2a38" },
+  checkerNote: { fontSize: T.small, color: "#6b6b82", lineHeight: 1.5, marginTop: 10 },
+  tBallHit: { boxShadow: "0 0 0 2px #3ecf8e" },
   saveForm: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 20, padding: 24, marginTop: 16 },
   formLabel: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, display: "block" },
   formInput: { width: "100%", padding: "12px 14px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: Math.max(T.body, INPUT_FONT_MIN), outline: "none", marginBottom: 16 },
@@ -406,6 +496,122 @@ const S = {
   authSuccess: { background: "rgba(62,207,142,0.1)", border: "1px solid rgba(62,207,142,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: T.small, color: "#3ecf8e", marginBottom: 16 },
   signOutBtn: { background: "transparent", border: "1px solid #2a2a38", color: "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: T.small, padding: "5px 12px", borderRadius: 8, cursor: "pointer" },
 };
+
+// ── Ticket Checker ───────────────────────────────────────────
+// Controlled: the parent owns `form` so it can outlive this component (the
+// logged-out signup carry-through needs that). `onSave(ticket, form)` returns an
+// error string or null. Check never writes anything.
+function TicketChecker({ form, setForm, draws, onSave }) {
+  // Error stores the form object it was raised against: any edit clears it.
+  const [error, setError] = useState(null);
+  // Checked result, keyed by checkKey so the multiplier can change underneath it.
+  const [checked, setChecked] = useState(null);
+  const [warned, setWarned] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const update = (patch) => setForm({ ...form, ...patch });
+  const fail = (msg) => setError({ msg, form });
+
+  const selectGame = (key) => {
+    if (key === form.game) return;
+    // The date follows the game while it is still the default (latest on file).
+    const userDate = form.drawDate && form.drawDate !== latestDrawDate(draws, form.game);
+    update({ game: key, multiplier: "", drawDate: userDate ? form.drawDate : latestDrawDate(draws, key) });
+  };
+
+  const check = () => {
+    const v = validateTicketForm(form);
+    if (v.error) { fail(v.error); return; }
+    if (nonDrawDayWarning(form.game, form.drawDate)) { fail(drawDaysLabel(form.game)); return; }
+    setChecked({ key: checkKey(form), ticket: v.ticket });
+  };
+
+  const save = async () => {
+    const v = validateTicketForm(form);
+    if (v.error) { fail(v.error); return; }
+    // Soft warning: first click arms it, second click through saves.
+    const wk = warnKey(form.game, form.drawDate);
+    if (nonDrawDayWarning(form.game, form.drawDate) && warned !== wk) { setWarned(wk); return; }
+    setSaving(true);
+    const err = await onSave(v.ticket, form);
+    setSaving(false);
+    if (err) fail(err);
+  };
+
+  const warning = nonDrawDayWarning(form.game, form.drawDate);
+  const warnArmed = !!warning && warned === warnKey(form.game, form.drawDate);
+  const showError = error && error.form === form;
+  const multiplier = form.game === "mm" ? Number(form.multiplier) || null : null;
+  const outcome = checked && checked.key === checkKey(form)
+    ? checkTicketOutcome(checked.ticket, draws, multiplier) : null;
+  const ballInput = { type: "text", inputMode: "numeric", pattern: "[0-9]*", maxLength: 2, autoComplete: "off", placeholder: "—" };
+
+  return (
+    <div style={S.saveForm}>
+      <div style={S.sectionLabel}>Game</div>
+      <div style={S.checkerGameRow}>
+        {Object.keys(GAMES).map(key => (
+          <button key={key} style={S.checkerGameBtn(form.game === key, key)} onClick={() => selectGame(key)}>{GAMES[key].name}</button>
+        ))}
+      </div>
+      <div style={S.checkerNumLabels}><span>Main numbers</span><span>{SPECIAL_NAME[form.game]}</span></div>
+      <div style={S.checkerBallsRow}>
+        {form.numbers.map((n, i) => (
+          <input key={i} {...ballInput} style={S.checkerBall("main")} aria-label={`Main number ${i + 1}`} value={n}
+            onChange={e => { const nums = [...form.numbers]; nums[i] = cleanNumberInput(e.target.value); update({ numbers: nums }); }} />
+        ))}
+        <div style={S.sep}>+</div>
+        <input {...ballInput} style={S.checkerBall(form.game)} aria-label={SPECIAL_NAME[form.game]} value={form.special}
+          onChange={e => update({ special: cleanNumberInput(e.target.value) })} />
+      </div>
+      <label style={S.formLabel}>Draw Date</label>
+      <input style={S.formInput} type="date" value={form.drawDate} min={MIN_DRAW_DATE} max={maxDrawDate()} onChange={e => update({ drawDate: e.target.value })} />
+      {form.game === "mm" && (
+        <>
+          <label style={S.formLabel}>Multiplier (optional)</label>
+          <select style={S.formInput} value={form.multiplier} onChange={e => update({ multiplier: e.target.value })}>
+            <option value="">Not sure</option>
+            {MM_MULTIPLIER.values.map(m => <option key={m} value={m}>{m}X</option>)}
+          </select>
+        </>
+      )}
+      <label style={S.formLabel}>Notes (optional)</label>
+      <input style={S.formInput} type="text" placeholder="e.g. corner store ticket..." value={form.notes} onChange={e => update({ notes: e.target.value })} />
+      {showError && <div role="alert" style={S.formError}>{error.msg}</div>}
+      {warnArmed && <div style={S.drawDayWarning}>{warning}</div>}
+      <button style={{ ...S.btnPrimary(form.game), marginTop: 16 }} onClick={check}>Check Ticket</button>
+      <button style={S.btnSecondary} onClick={save} disabled={saving}>
+        {saving ? "Saving..." : warnArmed ? "Save anyway" : "Save Ticket"}
+      </button>
+      {outcome && (
+        <div style={S.checkerResult} role="status">
+          {outcome.kind === "result" ? (
+            <>
+              <div style={S.sectionLabel}>Winning numbers · {formatDrawDate(outcome.draw.draw_date)}</div>
+              <div style={S.tBallsRow}>
+                {outcome.draw.numbers.map(n => (
+                  <div key={n} style={{ ...S.tBall("main"), ...(checked.ticket.numbers.includes(n) ? S.tBallHit : null) }}>{n}</div>
+                ))}
+                <div style={S.sep}>+</div>
+                <div style={{ ...S.tBall(outcome.draw.game), ...(checked.ticket.special === outcome.draw.special ? S.tBallHit : null) }}>{outcome.draw.special}</div>
+              </div>
+              <div style={S.resultBadge(outcome.result)}>{outcome.result.label}</div>
+              {outcome.result.tier === "win" && outcome.draw.game === "mm" && !multiplier && (
+                <div style={S.checkerNote}>Choose the multiplier printed on your ticket to see the exact amount.</div>
+              )}
+              {outcome.result.tier === "win" && outcome.draw.game === "pb" && (
+                <div style={S.checkerNote}>Power Play can multiply non-jackpot prizes.</div>
+              )}
+              <div style={S.checkerNote}>Always confirm results with the official lottery.</div>
+            </>
+          ) : (
+            <div style={S.checkerNote}>{outcome.msg}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Auth Screen ──────────────────────────────────────────────
 function AuthScreen() {
@@ -494,12 +700,9 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [expandedTicket, setExpandedTicket] = useState(null);
   const [editValues, setEditValues] = useState({});
-  const [showManualEntry, setShowManualEntry] = useState(false);
-  const [manualForm, setManualForm] = useState({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
-  const [manualWarnedDate, setManualWarnedDate] = useState(null);
-  // Validation error shown inside the manual-entry card. Stores the form object it was
-  // raised against; any edit replaces manualForm, so the error clears itself.
-  const [manualError, setManualError] = useState(null);
+  const [showChecker, setShowChecker] = useState(false);
+  // Checker form lives here, not in TicketChecker, so it can outlive the component.
+  const [checkerForm, setCheckerForm] = useState(EMPTY_TICKET_FORM);
   const [checkinClaimed, setCheckinClaimed] = useState(false);
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [matchPoints, setMatchPoints] = useState({});
@@ -695,39 +898,25 @@ export default function App() {
       showToast("Ticket updated");
     }
   };
-    const saveManualTicket = async () => {
-    const nums = manualForm.numbers.map(n => parseInt(n)).filter(n => !isNaN(n));
-    const special = parseInt(manualForm.special);
-    const g = GAMES[manualForm.game];
-    const failManual = (msg) => setManualError({ msg, form: manualForm });
-    if (nums.length !== 5) { failManual("Enter all 5 main numbers"); return; }
-    if (isNaN(special)) { failManual("Enter the " + (manualForm.game === "pb" ? "Powerball" : "Mega Ball")); return; }
-    if (nums.some(n => n < g.main[0] || n > g.main[1])) { failManual(`Main numbers must be ${g.main[0]} to ${g.main[1]}`); return; }
-    if (new Set(nums).size !== 5) { failManual("Numbers must be unique"); return; }
-    if (special < g.special[0] || special > g.special[1]) { failManual(`${manualForm.game === "pb" ? "Powerball" : "Mega Ball"} must be ${g.special[0]} to ${g.special[1]}`); return; }
-    const dateError = validateDrawDate(manualForm.drawDate);
-    if (dateError) { failManual(dateError); return; }
-    // Soft warning: first click arms it, second click through saves.
-    if (nonDrawDayWarning(manualForm.game, manualForm.drawDate) && manualWarnedDate !== warnKey(manualForm.game, manualForm.drawDate)) {
-      setManualWarnedDate(warnKey(manualForm.game, manualForm.drawDate));
-      return;
-    }
+  // TicketChecker has already validated the ticket and handled the soft warning.
+  // Returns an error string for the checker to show inline, or null on success.
+  const saveCheckedTicket = async (ticket, form) => {
     const { data, error } = await supabase.from("tickets").insert({
       user_id: session.user.id,
-      game: manualForm.game,
-      numbers: nums.sort((a,b) => a-b),
-      special,
+      game: ticket.game,
+      numbers: ticket.numbers,
+      special: ticket.special,
       pick_mode: "manual",
-      draw_date: manualForm.drawDate || null,
-      notes: manualForm.notes || null,
+      draw_date: ticket.draw_date,
+      notes: form.notes || null,
       stake: 0, payout: 0, status: "open",
     }).select().single();
-    if (error) { setManualError({ msg: "Error saving ticket. Please try again.", form: manualForm }); return; }
+    if (error) return "Error saving ticket. Please try again.";
     setTickets([data, ...tickets]);
-    setShowManualEntry(false);
-    setManualForm({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
-    setManualWarnedDate(null);
+    setShowChecker(false);
+    setCheckerForm(EMPTY_TICKET_FORM);
     showToast("✓ Ticket saved!");
+    return null;
   };
     const getDrawReminders = () => {
     const now = new Date();
@@ -758,8 +947,6 @@ export default function App() {
   // already clicked Save once and been shown the warning; a second click saves.
   const saveWarning = pick ? nonDrawDayWarning(pick.game, form.drawDate) : null;
   const saveWarnArmed = !!saveWarning && warnedDate === warnKey(pick?.game, form.drawDate);
-  const manualWarning = nonDrawDayWarning(manualForm.game, manualForm.drawDate);
-  const manualWarnArmed = !!manualWarning && manualWarnedDate === warnKey(manualForm.game, manualForm.drawDate);
 
   const filtered = tickets.filter(t => filter==="all" || t.game===filter || (filter==="open" && t.status==="open"));
 
@@ -900,43 +1087,15 @@ export default function App() {
   <div style={S.histTitle}>My Tickets</div>
   <div style={S.ticketCount}>{tickets.length} ticket{tickets.length!==1?"s":""}</div>
 </div>
-<button style={{...S.btnSecondary, marginBottom: 16}} onClick={() => { setShowManualEntry(!showManualEntry); setManualError(null); }}>
-  {showManualEntry ? "Cancel" : "+ Enter Ticket Manually"}
+<button style={{...S.btnSecondary, marginBottom: 16}} onClick={() => {
+  if (!showChecker) setCheckerForm({ ...EMPTY_TICKET_FORM, drawDate: latestDrawDate(draws, EMPTY_TICKET_FORM.game) });
+  setShowChecker(!showChecker);
+}}>
+  {showChecker ? "Cancel" : "+ Check or Add a Ticket"}
 </button>
-{showManualEntry && (
-  <div style={S.saveForm}>
-    <div style={S.sectionLabel}>Game</div>
-    <div style={{display:"flex", gap:8, marginBottom:16}}>
-      {["pb","mm"].map(key => (
-        <button key={key} style={{flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${manualForm.game===key?(key==="pb"?"#e8364a":"#f5a623"):"#2a2a38"}`, background: manualForm.game===key?"#1c1c26":"transparent", color: manualForm.game===key?(key==="pb"?"#e8364a":"#f5a623"):"#6b6b82", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:T.body, cursor:"pointer"}}
-          onClick={() => setManualForm({...manualForm, game: key})}>
-          {GAMES[key].name}
-        </button>
-      ))}
-    </div>
-    <div style={S.sectionLabel}>Main Numbers (pick 5)</div>
-    <div style={{display:"flex", gap:8, marginBottom:16}}>
-      {manualForm.numbers.map((n, i) => (
-        <input key={i} style={{width:48, height:48, borderRadius:"50%", background:"#1c1c26", border:"1.5px solid #2a2a38", color:"#f0f0f5", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:Math.max(T.body, INPUT_FONT_MIN), textAlign:"center", outline:"none"}}
-         type="number" placeholder="—" value={n} min={GAMES[manualForm.game].main[0]} max={GAMES[manualForm.game].main[1]}
-          onChange={e => { const nums = [...manualForm.numbers]; nums[i] = e.target.value; setManualForm({...manualForm, numbers: nums}); }} />
-      ))}
-    </div>
-    <div style={S.sectionLabel}>{manualForm.game === "pb" ? "Powerball" : "Mega Ball"}</div>
-    <div style={{marginBottom:16}}>
-      <input style={{width:48, height:48, borderRadius:"50%", background: manualForm.game==="pb"?"#e8364a":"#f5a623", border:"none", color: manualForm.game==="pb"?"white":"#0a0a0f", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:Math.max(T.body, INPUT_FONT_MIN), textAlign:"center", outline:"none"}}
-        type="number" placeholder="—" value={manualForm.special} min={GAMES[manualForm.game].special[0]} max={GAMES[manualForm.game].special[1]}
-        onChange={e => setManualForm({...manualForm, special: e.target.value})} />
-    </div>
-    <label style={S.formLabel}>Draw Date</label>
-    <input style={S.formInput} type="date" value={manualForm.drawDate} min={MIN_DRAW_DATE} max={maxDrawDate()} onChange={e => setManualForm({...manualForm, drawDate: e.target.value})} />
-    <label style={S.formLabel}>Notes (optional)</label>
-    <input style={S.formInput} type="text" placeholder="e.g. corner store ticket..." value={manualForm.notes} onChange={e => setManualForm({...manualForm, notes: e.target.value})} />
-    {manualError && manualError.form === manualForm && <div role="alert" style={S.formError}>{manualError.msg}</div>}
-    {manualWarnArmed && <div style={S.drawDayWarning}>{manualWarning}</div>}
-    <button style={S.btnSave} onClick={saveManualTicket}>
-      {manualWarnArmed ? "Save anyway" : "Save Ticket"}
-    </button>
+{showChecker && (
+  <div style={{ marginBottom: 16 }}>
+    <TicketChecker form={checkerForm} setForm={setCheckerForm} draws={draws} onSave={saveCheckedTicket} />
   </div>
 )}
               <div style={S.filterRow}>
