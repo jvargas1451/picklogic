@@ -16,6 +16,8 @@ const MODES = {
   hot: { label: "Hot Numbers", rationale: "Weighted toward your most-played numbers from saved tickets." },
   cold: { label: "Cold Numbers", rationale: "Weighted toward numbers you've played least often." },
 };
+// Logged-out visitors get the modes that need no ticket history.
+const GUEST_MODES = ["random", "balanced"];
 
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -385,8 +387,8 @@ const INPUT_FONT_MIN = 16;
 // carries the field's normal bottom margin (S.formInput.marginBottom).
 const FORM_HINT_GAP = 6;
 
-// Checker number circles. 44px is the minimum comfortable tap target, and six
-// of them plus the "+" fit one row inside the 335px content width at 375px.
+// Checker number circles: up to 44px, shrinking to share one row. At 375px the
+// card's inner width is 287px, so each circle lands at about 40px.
 const CHECKER_BALL_SIZE = 44;
 
 const ICON_SIZE = {
@@ -439,16 +441,17 @@ const S = {
   checkerGameRow: { display: "flex", gap: 8, marginBottom: 16 },
   checkerGameBtn: (active, key) => ({ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${active ? (key === "pb" ? "#e8364a" : "#f5a623") : "#2a2a38"}`, background: active ? "#1c1c26" : "transparent", color: active ? (key === "pb" ? "#e8364a" : "#f5a623") : "#6b6b82", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.body, cursor: "pointer" }),
   checkerNumLabels: { display: "flex", justifyContent: "space-between", fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 },
-  checkerBallsRow: { display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap", marginBottom: 16 },
+  checkerBallsRow: { display: "flex", gap: 4, alignItems: "center", flexWrap: "nowrap", marginBottom: 16 },
   // appearance/padding/boxSizing reset is the iOS oval fix: Safari's default
   // input padding and appearance stretched the fixed-size circle.
-  checkerBall: (type) => ({ width: CHECKER_BALL_SIZE, height: CHECKER_BALL_SIZE, flex: "0 0 auto", boxSizing: "border-box", padding: 0, margin: 0, borderRadius: "50%", WebkitAppearance: "none", MozAppearance: "textfield", appearance: "none", background: type === "main" ? "#1c1c26" : type === "pb" ? "#e8364a" : "#f5a623", border: type === "main" ? "1.5px solid #2a2a38" : "none", color: type === "mm" ? "#0a0a0f" : type === "pb" ? "white" : "#f0f0f5", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: Math.max(T.body, INPUT_FONT_MIN), textAlign: "center", outline: "none" }),
+  checkerBall: (type) => ({ flex: "1 1 0", minWidth: 0, maxWidth: CHECKER_BALL_SIZE, aspectRatio: "1 / 1", height: "auto", boxSizing: "border-box", padding: 0, margin: 0, borderRadius: "50%", WebkitAppearance: "none", MozAppearance: "textfield", appearance: "none", background: type === "main" ? "#1c1c26" : type === "pb" ? "#e8364a" : "#f5a623", border: type === "main" ? "1.5px solid #2a2a38" : "none", color: type === "mm" ? "#0a0a0f" : type === "pb" ? "white" : "#f0f0f5", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: Math.max(T.body, INPUT_FONT_MIN), textAlign: "center", outline: "none" }),
   checkerResult: { marginTop: 20, paddingTop: 16, borderTop: "1px solid #2a2a38" },
   checkerNote: { fontSize: T.small, color: "#6b6b82", lineHeight: 1.5, marginTop: 10 },
   tBallHit: { boxShadow: "0 0 0 2px #3ecf8e" },
+  checkerDrawRow: { display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" },
   saveForm: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 20, padding: 24, marginTop: 16 },
   formLabel: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, display: "block" },
-  formInput: { width: "100%", padding: "12px 14px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: Math.max(T.body, INPUT_FONT_MIN), outline: "none", marginBottom: 16 },
+  formInput: { width: "100%", boxSizing: "border-box", padding: "12px 14px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: Math.max(T.body, INPUT_FONT_MIN), outline: "none", marginBottom: 16 },
   btnSave: { width: "100%", padding: 14, borderRadius: 12, border: "none", background: "#7c6aff", color: "white", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.body, cursor: "pointer", boxShadow: "0 4px 20px rgba(124,106,255,0.3)", marginTop: 16 },
   formHint: { fontSize: T.small, color: "#6b6b82", lineHeight: 1.4 },
   formError: { padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(232,54,74,0.45)", background: "rgba(232,54,74,0.12)", color: "#ff6b7a", fontSize: T.small, lineHeight: 1.5, marginTop: 4 },
@@ -486,9 +489,8 @@ const S = {
   freqTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: T.body, marginBottom: 14, marginTop: 24, color: "#f0f0f5" },
   freqGrid: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 },
   freqBall: (hot) => ({ width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.body, background: hot ? "rgba(232,54,74,0.2)" : "rgba(124,106,255,0.1)", color: hot ? "#e8364a" : "#7c6aff", border: `1.5px solid ${hot ? "rgba(232,54,74,0.4)" : "rgba(124,106,255,0.2)"}` }),
-  authWrap: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 20px" },
-  authBox: { width: "100%", maxWidth: 400, background: "#13131a", border: "1px solid #2a2a38", borderRadius: 24, padding: 32 },
-  authLogo: { fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: T.display, textAlign: "center", marginBottom: 8 },
+  authBox: { width: "100%", boxSizing: "border-box", maxWidth: 400, margin: "0 auto", background: "#13131a", border: "1px solid #2a2a38", borderRadius: 24, padding: 32 },
+  guestIntro: { fontSize: T.body, color: "#6b6b82", lineHeight: 1.5, marginBottom: 4 },
   authSubtitle: { fontFamily: "'DM Mono', monospace", fontSize: T.small, color: "#6b6b82", textAlign: "center", marginBottom: 32, letterSpacing: 0.5 },
   authTabs: { display: "flex", gap: 4, background: "#0a0a0f", borderRadius: 10, padding: 4, marginBottom: 28 },
   authTab: (active) => ({ flex: 1, padding: "9px 0", border: "none", background: active ? "#1c1c26" : "transparent", color: active ? "#f0f0f5" : "#6b6b82", fontFamily: "'DM Sans', sans-serif", fontSize: T.body, fontWeight: 500, borderRadius: 8, cursor: "pointer" }),
@@ -501,7 +503,9 @@ const S = {
 // Controlled: the parent owns `form` so it can outlive this component (the
 // logged-out signup carry-through needs that). `onSave(ticket, form)` returns an
 // error string or null. Check never writes anything.
-function TicketChecker({ form, setForm, draws, onSave }) {
+// `guest` (logged out): no Notes field, and Save only appears after a Check, as
+// "Sign up to save it". The parent's onSave opens signup; nothing is written.
+function TicketChecker({ form, setForm, draws, onSave, guest = false }) {
   // Error stores the form object it was raised against: any edit clears it.
   const [error, setError] = useState(null);
   // Checked result, keyed by checkKey so the multiplier can change underneath it.
@@ -575,20 +579,26 @@ function TicketChecker({ form, setForm, draws, onSave }) {
           </select>
         </>
       )}
-      <label style={S.formLabel}>Notes (optional)</label>
-      <input style={S.formInput} type="text" placeholder="e.g. corner store ticket..." value={form.notes} onChange={e => update({ notes: e.target.value })} />
+      {!guest && (
+        <>
+          <label style={S.formLabel}>Notes (optional)</label>
+          <input style={S.formInput} type="text" placeholder="e.g. corner store ticket..." value={form.notes} onChange={e => update({ notes: e.target.value })} />
+        </>
+      )}
       {showError && <div role="alert" style={S.formError}>{error.msg}</div>}
       {warnArmed && <div style={S.drawDayWarning}>{warning}</div>}
       <button style={{ ...S.btnPrimary(form.game), marginTop: 16 }} onClick={check}>Check Ticket</button>
-      <button style={S.btnSecondary} onClick={save} disabled={saving}>
-        {saving ? "Saving..." : warnArmed ? "Save anyway" : "Save Ticket"}
-      </button>
+      {!guest && (
+        <button style={S.btnSecondary} onClick={save} disabled={saving}>
+          {saving ? "Saving..." : warnArmed ? "Save anyway" : "Save Ticket"}
+        </button>
+      )}
       {outcome && (
         <div style={S.checkerResult} role="status">
           {outcome.kind === "result" ? (
             <>
               <div style={S.sectionLabel}>Winning numbers · {formatDrawDate(outcome.draw.draw_date)}</div>
-              <div style={S.tBallsRow}>
+              <div style={S.checkerDrawRow}>
                 {outcome.draw.numbers.map(n => (
                   <div key={n} style={{ ...S.tBall("main"), ...(checked.ticket.numbers.includes(n) ? S.tBallHit : null) }}>{n}</div>
                 ))}
@@ -609,13 +619,30 @@ function TicketChecker({ form, setForm, draws, onSave }) {
           )}
         </div>
       )}
+      {guest && outcome && (
+        <button style={S.btnSave} onClick={save}>Sign up to save it</button>
+      )}
+    </div>
+  );
+}
+
+// Disclaimer + helpline + legal links. One copy for every screen that needs it.
+function LegalFooter() {
+  return (
+    <div style={S.disclaimer}>
+      <div style={S.disclaimerText}>PickLogic is an entertainment tool. Pick strategies are for fun — they do not improve your odds of winning. Please play responsibly. Problem gambling help: 1-800-547-6133.</div>
+      <div style={{ ...S.disclaimerText, marginTop: 8 }}>
+        <a href="/terms.html" style={S.legalLink}>Terms</a> · <a href="/privacy.html" style={S.legalLink}>Privacy</a>
+      </div>
     </div>
   );
 }
 
 // ── Auth Screen ──────────────────────────────────────────────
-function AuthScreen() {
-  const [tab, setTab] = useState("login");
+// Renders inside the app shell (not a whole-screen replacement), so App state
+// such as the checker form survives a login or signup.
+function AuthScreen({ initialTab = "login" }) {
+  const [tab, setTab] = useState(initialTab);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -645,11 +672,9 @@ function AuthScreen() {
   };
 
   return (
-    <div style={{ background: "#0a0a0f", minHeight: "100vh" }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
-      <div style={S.authWrap}>
+    <div>
+      <div>
         <div style={S.authBox}>
-          <div style={S.authLogo}><span style={{ color: "#f0f0f5" }}>Pick</span><span style={S.logoAccent}>Logic</span></div>
           <div style={S.authSubtitle}>POWERBALL · MEGA MILLIONS</div>
           <div style={S.authTabs}>
             <button style={S.authTab(tab === "login")} onClick={() => { setTab("login"); setError(""); setSuccess(""); }}>Log In</button>
@@ -703,6 +728,10 @@ export default function App() {
   const [showChecker, setShowChecker] = useState(false);
   // Checker form lives here, not in TicketChecker, so it can outlive the component.
   const [checkerForm, setCheckerForm] = useState(EMPTY_TICKET_FORM);
+  // Logged-out front door: which tab ("check" | "picks"), and the auth view
+  // ("login" | "signup" | null) shown inside the shell instead of the checker.
+  const [guestTab, setGuestTab] = useState("check");
+  const [authView, setAuthView] = useState(null);
   const [checkinClaimed, setCheckinClaimed] = useState(false);
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [matchPoints, setMatchPoints] = useState({});
@@ -755,7 +784,7 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
-    if (session) { loadTickets(); loadCheckinStatus(); loadProfile(); }
+    if (session) { loadTickets(); loadCheckinStatus(); loadProfile(); setAuthView(null); }
     else { setTickets([]); setCheckinClaimed(false); setMatchPoints({}); setUsername(null); }
   }, [session, loadTickets, loadCheckinStatus, loadProfile]);
 
@@ -809,10 +838,34 @@ export default function App() {
   const loadDraws = async () => {
     const { data, error } = await supabase
       .from("draws").select("*").order("draw_date", { ascending: false });
-    if (!error) setDraws(data || []);
+    if (!error) {
+      setDraws(data || []);
+      // Fill the checker's default date once draws arrive (latest on file).
+      setCheckerForm(f => (f.drawDate ? f : { ...f, drawDate: latestDrawDate(data || [], f.game) }));
+    }
   };
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
+
+  // Reset logged-out state so the next visitor on this device starts clean.
+  const signOut = () => {
+    setCheckerForm({ ...EMPTY_TICKET_FORM, drawDate: latestDrawDate(draws, EMPTY_TICKET_FORM.game) });
+    setShowChecker(false);
+    setGuestTab("check");
+    setMode("random");
+    setPick(null);
+    supabase.auth.signOut();
+  };
+
+  // Generate -> checker: the pick is for the next draw, not the latest on file.
+  const usePickInChecker = () => {
+    if (!pick) return;
+    setCheckerForm({ ...EMPTY_TICKET_FORM, game: pick.game, numbers: pick.numbers.map(String), special: String(pick.special), drawDate: nextDrawDate(pick.game) });
+    setGuestTab("check");
+  };
+
+  // Logged out, Save opens signup. The form stays in App state; nothing is written.
+  const guestSave = async () => { setAuthView("signup"); return null; };
 
   const generate = () => {
     const g = GAMES[game];
@@ -961,40 +1014,9 @@ export default function App() {
   tickets.forEach(t=>t.numbers.forEach(n=>{freq[n]=(freq[n]||0)+1;}));
   const sorted = Object.entries(freq).sort((a,b)=>b[1]-a[1]);
 
-  if (authLoading) return (
-    <div style={{ background: "#0a0a0f", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&display=swap" rel="stylesheet" />
-      <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: T.title, color: "#f0f0f5" }}>Pick<span style={{ color: "#7c6aff" }}>Logic</span></div>
-    </div>
-  );
-
-  if (!session) return <AuthScreen />;
-
-  return (
+  // Shared by the logged-in Quick Pick view and the logged-out "Get picks" tab.
+  const renderGameGrid = () => (
     <>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
-      <div style={{ background:"#0a0a0f", minHeight:"100vh" }}>
-        <div style={S.app}>
-          <header style={S.header}>
-            <div style={S.logo}><span style={{color:"#f0f0f5"}}>Pick</span><span style={S.logoAccent}>Logic</span></div>
-            <button style={S.signOutBtn} onClick={() => supabase.auth.signOut()}>Sign out</button>
-          </header>
-          {getDrawReminders().map(r => (
-  <div key={r.game} style={{ background: `rgba(${r.game==="pb"?"232,54,74":"245,166,35"},0.1)`, border: `1px solid rgba(${r.game==="pb"?"232,54,74":"245,166,35"},0.3)`, borderRadius: 12, padding: "12px 16px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
-    <span style={{ fontSize: ICON_SIZE.banner }}>🎟️</span>
-    <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: T.body, color: r.color, fontWeight: 500 }}>{r.label}</span>
-  </div>
-))}
-          <nav style={S.nav}>
-            {["pick","history","stats","leaderboard"].map((v,i)=>(
-              <button key={v} style={S.navBtn(view===v)} onClick={()=>setView(v)}>
-                {["Quick Pick","My Tickets","Stats","Leaders"][i]}
-              </button>
-            ))}
-          </nav>
-
-          {view==="pick" && (
-            <div>
               <div style={S.sectionLabel}>Select Game</div>
               <div style={S.gameGrid}>
                 {Object.entries(GAMES).map(([key,g])=>(
@@ -1006,30 +1028,14 @@ export default function App() {
                   </div>
                 ))}
               </div>
-              {username && !editingUsername && (
-                <div style={S.usernameRow}>
-                  <div style={S.usernameText}>@{username}</div>
-                  <button style={S.usernameEditLink} onClick={()=>{setEditingUsername(true);setUsernameInput(username);}}>Edit</button>
-                </div>
-              )}
-              {(!username || editingUsername) && (
-                <div style={S.usernameSetRow}>
-                  <input style={S.usernameInput} type="text" placeholder="Set a username" value={usernameInput}
-                    onChange={e=>setUsernameInput(e.target.value)}
-                    onKeyDown={e=>e.key==="Enter" && saveUsername()} />
-                  <button style={S.usernameSaveBtn} onClick={saveUsername} disabled={usernameSaving}>Save</button>
-                  {editingUsername && (
-                    <button style={S.usernameCancelBtn} onClick={()=>{setEditingUsername(false);setUsernameInput("");}}>Cancel</button>
-                  )}
-                </div>
-              )}
-              <button style={S.checkinBtn(checkinClaimed)} disabled={checkinClaimed || checkinLoading} onClick={handleCheckIn}>
-                {checkinClaimed ? "Checked in today ✓" : "Check in · +10 pts"}
-              </button>
+    </>
+  );
+  const renderPicker = (modeKeys) => (
+    <>
               <div style={S.sectionLabel}>Pick Strategy</div>
               <div style={S.modesRow}>
-                {Object.entries(MODES).map(([key,m])=>(
-                  <button key={key} style={S.modeBtn(mode===key)} onClick={()=>setMode(key)}>{m.label}</button>
+                {modeKeys.map(key=>(
+                  <button key={key} style={S.modeBtn(mode===key)} onClick={()=>setMode(key)}>{MODES[key].label}</button>
                 ))}
               </div>
               <div style={S.pickBox}>
@@ -1054,6 +1060,94 @@ export default function App() {
                 )}
               </div>
               <button style={S.btnPrimary(game)} onClick={generate}>Generate Numbers</button>
+    </>
+  );
+
+  if (authLoading) return (
+    <div style={{ background: "#0a0a0f", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&display=swap" rel="stylesheet" />
+      <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: T.title, color: "#f0f0f5" }}>Pick<span style={{ color: "#7c6aff" }}>Logic</span></div>
+    </div>
+  );
+
+  return (
+    <>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+      <div style={{ background:"#0a0a0f", minHeight:"100vh" }}>
+        <div style={S.app}>
+          <header style={S.header}>
+            <div style={S.logo}><span style={{color:"#f0f0f5"}}>Pick</span><span style={S.logoAccent}>Logic</span></div>
+            {session ? (
+              <button style={S.signOutBtn} onClick={signOut}>Sign out</button>
+            ) : authView ? (
+              <button style={S.signOutBtn} onClick={() => setAuthView(null)}>Back</button>
+            ) : (
+              <button style={S.signOutBtn} onClick={() => setAuthView("login")}>Log in</button>
+            )}
+          </header>
+          {!session && authView && <AuthScreen key={authView} initialTab={authView} />}
+          {!session && !authView && (
+            <div>
+              <nav style={S.nav}>
+                {[["check", "Check a ticket"], ["picks", "Get picks"]].map(([v, label]) => (
+                  <button key={v} style={S.navBtn(guestTab === v)} onClick={() => setGuestTab(v)}>{label}</button>
+                ))}
+              </nav>
+              {guestTab === "check" && (
+                <>
+                  <div style={S.guestIntro}>Check your numbers. No account needed.</div>
+                  <TicketChecker guest form={checkerForm} setForm={setCheckerForm} draws={draws} onSave={guestSave} />
+                </>
+              )}
+              {guestTab === "picks" && (
+                <>
+                  {renderGameGrid()}
+                  {renderPicker(GUEST_MODES)}
+                  {pick && <button style={S.btnSecondary} onClick={usePickInChecker}>Use these numbers</button>}
+                </>
+              )}
+              <LegalFooter />
+            </div>
+          )}
+          {session && (<>
+          {getDrawReminders().map(r => (
+  <div key={r.game} style={{ background: `rgba(${r.game==="pb"?"232,54,74":"245,166,35"},0.1)`, border: `1px solid rgba(${r.game==="pb"?"232,54,74":"245,166,35"},0.3)`, borderRadius: 12, padding: "12px 16px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
+    <span style={{ fontSize: ICON_SIZE.banner }}>🎟️</span>
+    <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: T.body, color: r.color, fontWeight: 500 }}>{r.label}</span>
+  </div>
+))}
+          <nav style={S.nav}>
+            {["pick","history","stats","leaderboard"].map((v,i)=>(
+              <button key={v} style={S.navBtn(view===v)} onClick={()=>setView(v)}>
+                {["Quick Pick","My Tickets","Stats","Leaders"][i]}
+              </button>
+            ))}
+          </nav>
+
+          {view==="pick" && (
+            <div>
+              {renderGameGrid()}
+              {username && !editingUsername && (
+                <div style={S.usernameRow}>
+                  <div style={S.usernameText}>@{username}</div>
+                  <button style={S.usernameEditLink} onClick={()=>{setEditingUsername(true);setUsernameInput(username);}}>Edit</button>
+                </div>
+              )}
+              {(!username || editingUsername) && (
+                <div style={S.usernameSetRow}>
+                  <input style={S.usernameInput} type="text" placeholder="Set a username" value={usernameInput}
+                    onChange={e=>setUsernameInput(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter" && saveUsername()} />
+                  <button style={S.usernameSaveBtn} onClick={saveUsername} disabled={usernameSaving}>Save</button>
+                  {editingUsername && (
+                    <button style={S.usernameCancelBtn} onClick={()=>{setEditingUsername(false);setUsernameInput("");}}>Cancel</button>
+                  )}
+                </div>
+              )}
+              <button style={S.checkinBtn(checkinClaimed)} disabled={checkinClaimed || checkinLoading} onClick={handleCheckIn}>
+                {checkinClaimed ? "Checked in today ✓" : "Check in · +10 pts"}
+              </button>
+              {renderPicker(Object.keys(MODES))}
               {pick && (
                 <button style={S.btnSecondary} onClick={()=>setShowSave(!showSave)}>
                   {showSave ? "Cancel" : "+ Save This Ticket"}
@@ -1072,12 +1166,7 @@ export default function App() {
                   </button>
                 </div>
               )}
-              <div style={S.disclaimer}>
-                <div style={S.disclaimerText}>PickLogic is an entertainment tool. Pick strategies are for fun — they do not improve your odds of winning. Please play responsibly. Problem gambling help: 1-800-547-6133.</div>
-                <div style={{ ...S.disclaimerText, marginTop: 8 }}>
-                  <a href="/terms.html" style={S.legalLink}>Terms</a> · <a href="/privacy.html" style={S.legalLink}>Privacy</a>
-                </div>
-              </div>
+              <LegalFooter />
             </div>
           )}
 
@@ -1222,6 +1311,7 @@ export default function App() {
               )}
             </div>
           )}
+          </>)}
         </div>
 
         {toast && (
