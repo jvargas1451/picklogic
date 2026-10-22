@@ -361,6 +361,7 @@ const S = {
   formInput: { width: "100%", padding: "12px 14px", background: "#1c1c26", border: "1px solid #2a2a38", borderRadius: 10, color: "#f0f0f5", fontFamily: "'DM Sans', sans-serif", fontSize: Math.max(T.body, INPUT_FONT_MIN), outline: "none", marginBottom: 16 },
   btnSave: { width: "100%", padding: 14, borderRadius: 12, border: "none", background: "#7c6aff", color: "white", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.body, cursor: "pointer", boxShadow: "0 4px 20px rgba(124,106,255,0.3)", marginTop: 16 },
   formHint: { fontSize: T.small, color: "#6b6b82", lineHeight: 1.4 },
+  formError: { padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(232,54,74,0.45)", background: "rgba(232,54,74,0.12)", color: "#ff6b7a", fontSize: T.small, lineHeight: 1.5, marginTop: 4 },
   drawDayWarning: { padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(245,166,35,0.4)", background: "rgba(245,166,35,0.12)", color: "#f5a623", fontSize: T.small, lineHeight: 1.5, marginTop: 4 },
   disclaimer: { marginTop: 28, padding: 16, borderRadius: 12, border: "1px solid #2a2a38", background: "#13131a" },
   disclaimerText: { fontSize: T.small, color: "#6b6b82", lineHeight: 1.6, textAlign: "center" },
@@ -496,6 +497,9 @@ export default function App() {
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualForm, setManualForm] = useState({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
   const [manualWarnedDate, setManualWarnedDate] = useState(null);
+  // Validation error shown inside the manual-entry card. Stores the form object it was
+  // raised against; any edit replaces manualForm, so the error clears itself.
+  const [manualError, setManualError] = useState(null);
   const [checkinClaimed, setCheckinClaimed] = useState(false);
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [matchPoints, setMatchPoints] = useState({});
@@ -695,13 +699,14 @@ export default function App() {
     const nums = manualForm.numbers.map(n => parseInt(n)).filter(n => !isNaN(n));
     const special = parseInt(manualForm.special);
     const g = GAMES[manualForm.game];
-    if (nums.length !== 5) { showToast("Enter all 5 main numbers"); return; }
-    if (isNaN(special)) { showToast("Enter the " + (manualForm.game === "pb" ? "Powerball" : "Mega Ball")); return; }
-    if (nums.some(n => n < g.main[0] || n > g.main[1])) { showToast(`Main numbers must be ${g.main[0]} to ${g.main[1]}`); return; }
-    if (new Set(nums).size !== 5) { showToast("Numbers must be unique"); return; }
-    if (special < g.special[0] || special > g.special[1]) { showToast(`${manualForm.game === "pb" ? "Powerball" : "Mega Ball"} must be ${g.special[0]} to ${g.special[1]}`); return; }
+    const failManual = (msg) => setManualError({ msg, form: manualForm });
+    if (nums.length !== 5) { failManual("Enter all 5 main numbers"); return; }
+    if (isNaN(special)) { failManual("Enter the " + (manualForm.game === "pb" ? "Powerball" : "Mega Ball")); return; }
+    if (nums.some(n => n < g.main[0] || n > g.main[1])) { failManual(`Main numbers must be ${g.main[0]} to ${g.main[1]}`); return; }
+    if (new Set(nums).size !== 5) { failManual("Numbers must be unique"); return; }
+    if (special < g.special[0] || special > g.special[1]) { failManual(`${manualForm.game === "pb" ? "Powerball" : "Mega Ball"} must be ${g.special[0]} to ${g.special[1]}`); return; }
     const dateError = validateDrawDate(manualForm.drawDate);
-    if (dateError) { showToast(dateError); return; }
+    if (dateError) { failManual(dateError); return; }
     // Soft warning: first click arms it, second click through saves.
     if (nonDrawDayWarning(manualForm.game, manualForm.drawDate) && manualWarnedDate !== warnKey(manualForm.game, manualForm.drawDate)) {
       setManualWarnedDate(warnKey(manualForm.game, manualForm.drawDate));
@@ -717,7 +722,7 @@ export default function App() {
       notes: manualForm.notes || null,
       stake: 0, payout: 0, status: "open",
     }).select().single();
-    if (error) { showToast("Error saving ticket"); return; }
+    if (error) { setManualError({ msg: "Error saving ticket. Please try again.", form: manualForm }); return; }
     setTickets([data, ...tickets]);
     setShowManualEntry(false);
     setManualForm({ game: "pb", numbers: ["","","","",""], special: "", drawDate: "", notes: "" });
@@ -895,7 +900,7 @@ export default function App() {
   <div style={S.histTitle}>My Tickets</div>
   <div style={S.ticketCount}>{tickets.length} ticket{tickets.length!==1?"s":""}</div>
 </div>
-<button style={{...S.btnSecondary, marginBottom: 16}} onClick={() => setShowManualEntry(!showManualEntry)}>
+<button style={{...S.btnSecondary, marginBottom: 16}} onClick={() => { setShowManualEntry(!showManualEntry); setManualError(null); }}>
   {showManualEntry ? "Cancel" : "+ Enter Ticket Manually"}
 </button>
 {showManualEntry && (
@@ -927,6 +932,7 @@ export default function App() {
     <input style={S.formInput} type="date" value={manualForm.drawDate} min={MIN_DRAW_DATE} max={maxDrawDate()} onChange={e => setManualForm({...manualForm, drawDate: e.target.value})} />
     <label style={S.formLabel}>Notes (optional)</label>
     <input style={S.formInput} type="text" placeholder="e.g. corner store ticket..." value={manualForm.notes} onChange={e => setManualForm({...manualForm, notes: e.target.value})} />
+    {manualError && manualError.form === manualForm && <div role="alert" style={S.formError}>{manualError.msg}</div>}
     {manualWarnArmed && <div style={S.drawDayWarning}>{manualWarning}</div>}
     <button style={S.btnSave} onClick={saveManualTicket}>
       {manualWarnArmed ? "Save anyway" : "Save Ticket"}
