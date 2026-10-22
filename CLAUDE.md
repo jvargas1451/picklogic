@@ -5,7 +5,7 @@ The Technical Master Plan and Orientation Reference (docx) hold strategy and rat
 this file holds facts. When they conflict, this file wins. Update this file at the end
 of any session that changes architecture, schema, secrets, or workflows.
 
-Last updated: 2026-10-19 (launch-prep Day 2: computed next-draw date, tickets FK fix, legal pages)
+Last updated: 2026-10-21 (checker phase step 2: Mega Millions April 2025 rules, PRIZES table, inline manual-entry errors)
 
 ## What this is
 
@@ -54,7 +54,9 @@ get results checked automatically. Entertainment tool — never claim improved o
 - **draws** — id, game, draw_date (**`date`**), numbers, special, jackpot, created_at.
   Unique on (game, draw_date), constraint `draws_game_draw_date_unique`. RLS: public SELECT only.
   Written only by the edge function (service role).
-  NOTE: numbers may be stored as strings — settlement code normalizes to int before comparing.
+  Column types verified 2026-10-19: `numbers` is `int[]`, `special` is `integer`. (An earlier note here
+  said numbers "may be stored as strings"; that was stale. bright-api's `toInt` normalizing is harmless.)
+  `jackpot` is written as 0 on most rows: the feed's jackpot field is null at publish time (see Feed facts).
   `draw_date` here was ALREADY `date` before the 2026-08-07 phase — it was never TEXT, despite
   what an earlier version of this file claimed. Verified against information_schema. The upsert
   passes the lottery API's date string straight in and Postgres coerces it.
@@ -106,6 +108,14 @@ ticket insert, including manual entry — not just app-flow saves.
 SYNC NOTE: THREE places interpret match results and must move together if prize tiers change:
 `checkResult()` in App.js (display badge), the win rule in bright-api (won/lost status), and the
 tier ladder in bright-api (points). `match_any` intentionally overlaps with losing tickets.
+Since 2026-10-21 `checkResult()` takes its labels from the module-scope `PRIZES` table: a tier key
+present in `PRIZES` means a win, which is exactly bright-api's rule (special matched OR 3+ main).
+The three-place rule is unchanged; `PRIZES` is just where the App.js side now lives.
+
+FEED FACTS (lotteryresultsfeed.com, recon 2026-10-21): free tier, 100 calls/month; history is limited
+to the last 30 days. `draw_date` and `since` query params exist (fetch-by-date IS supported, within
+that 30-day window). `next_jackpot` / `next_jackpot_cash` exist and populate hours after the result.
+The jackpot field is null at publish time, which is the root cause of the `jackpot = 0` rows in `draws`.
 
 DATE PLUMBING NOTE: the settlement sweep does NOT join in SQL and contains NO `::date` casts.
 It pulls both tables through supabase-js and joins in JavaScript on a string map key —
@@ -203,7 +213,15 @@ Rules: never hardcode secrets in source; never print secret values in sessions; 
 
 ## Frontend logic worth knowing (src/App.js)
 
-- `checkResult(ticket, draws)` — display-only prize badge; settlement is the DB truth
+- `checkResult(ticket, draws)` — display-only prize badge; settlement is the DB truth. Looks up the
+  tier key `"<main matched>+<special 0/1>"` in `PRIZES`; missing key = "No match", `base: null` = jackpot.
+- `PRIZES` (module scope, added 2026-10-21) — single source of truth for prize labels, keyed
+  game → tier key → `{ base, multiplier }`. mm multiplier is built-in 2/3/4/5/10 (`MM_MULTIPLIER`);
+  pb is optional Power Play with the $2M Match 5 cap (`PB_POWER_PLAY`). mm `base` is the 1X figure,
+  which is NEVER paid (every $5 play carries at least 2X), so mm labels show the range only, e.g.
+  "Matched 3 + MB · $400 to $2,000". pb labels show the base, e.g. "Matched 3 + PB · $100 base".
+  `prizeLabel()` / `formatPrize()` build the copy; labels are sized to fit one line on a 375px card.
+  Source: megamillions.com How to Play table, verified 2026-10-21. The checker reuses this table.
 - `getDrawReminders()` — in-app banners; uses LOCAL dates throughout (UTC mixing bug fixed — don't reintroduce toISOString here)
 - **Date helpers are module-scope and are the single source of truth. Do not re-declare inline.**
   - `toLocalDateString(d)` — Date → `YYYY-MM-DD` from LOCAL components. NEVER use
@@ -215,7 +233,10 @@ Rules: never hardcode secrets in source; never print secret values in sessions; 
     rollovers like `2026-02-31`.
   - `DRAW_DAYS = { pb: [1,3,6], mm: [2,5] }` — 0=Sun. Used by validation, the non-draw-day
     warning, AND `getDrawReminders`. Previously duplicated inline as `pbDays`/`mmDays`.
-  - `MIN_DRAW_DATE = "2024-01-01"`, `MAX_DRAW_DATE_DAYS_AHEAD = 35`, `maxDrawDate()`
+  - `MIN_DRAW_DATE = "2025-04-08"`, `MAX_DRAW_DATE_DAYS_AHEAD = 35`, `maxDrawDate()`.
+    MIN is the first Mega Millions draw under the current rules; an earlier ticket would be
+    labeled from the wrong prize table. Applies to both games. Was "2024-01-01" until 2026-10-21;
+    no ticket or draw predates 2026-06-03, so nothing was invalidated.
   - `validateDrawDate(str)` — returns an error string or null. HARD reject: empty, unparseable,
     before MIN, more than 35 days out.
   - `nonDrawDayWarning(game, str)` — returns warning copy or null. SOFT: warns, never blocks.
@@ -231,7 +252,16 @@ Rules: never hardcode secrets in source; never print secret values in sessions; 
 - `pickUnique` weighted branch — guarantees exactly `count` picks (floating-point fallback in place)
 - Stats: wins = status==='won' (now real, since settlement); net = all payouts − all stakes
 - Manual ticket entry doubles as the settlement testing tool
-- Game constants: pb main 1–69 special 1–26; mm main 1–70 special 1–25
+- Manual-entry validation errors show INLINE in the card (`S.formError`, red, above the Save button),
+  not as a toast (2026-10-21; the bottom toast was easy to miss and was green). `manualError` stores
+  the form object it was raised against, so any edit clears it with no `useEffect`; Cancel clears it
+  too. Range messages quote `GAMES` (e.g. "Mega Ball must be 1 to 24"). Quick Pick save still uses
+  the toast for date errors (see Backlog).
+- Game constants: pb main 1–69 special 1–26; mm main 1–70 special 1–24. Mega Millions changed rules
+  with the 2025-04-08 draw (MB 1–25 to 1–24, $5 per play, built-in 2X to 10X multiplier, jackpot odds
+  1 in 290,472,336). `GAMES` also holds each game's `odds` string for the Quick Pick cards. Every
+  range check, input `min`/`max`, and range message reads `GAMES`; no second literal anywhere.
+  Prize amounts live in `PRIZES`.
 - Check-in button (task 6): calls `daily_checkin` RPC; claimed/claimable state read from
   `point_events` on load, not stored client-side.
 - Ticket cards (task 6.5): show a "+N pts" badge next to the match badge ONLY for match-tier
@@ -341,7 +371,8 @@ UI. New feature phases start in a fresh Claude.ai chat — this phase is closed.
 
 **Date integrity phase COMPLETE 2026-08-07** (verified in production): `tickets.draw_date`
 migrated TEXT → `date`; hard validation in both save paths (empty / unparseable / before
-2024-01-01 / more than 35 days out); soft non-draw-day warning with two-step confirm; `min`/`max`
+`MIN_DRAW_DATE` / more than 35 days out; MIN was 2024-01-01, moved to 2025-04-08 on 2026-10-21 to
+match the Mega Millions rule change); soft non-draw-day warning with two-step confirm; `min`/`max`
 on both date inputs; quick-pick default date UTC-shift bug fixed; `DRAW_DAYS` consolidated to one
 declaration. Two permanently-unsettleable tickets (pb on a Tue, mm on a Wed) deleted; their
 save_ticket points deliberately kept. Recon found the data already clean — 0 NULL, 0 malformed,
@@ -367,17 +398,26 @@ whether they could check a ticket without saving. NEXT FEATURE PHASE: a logged-o
 checker as the front door (spec it in a fresh Claude.ai chat). The scanner later becomes an input
 method for the same checker. Also: manual entry is hard to find (only under My Tickets).
 
+LOGGED-OUT CHECKER PHASE (in progress, started 2026-10-21). Steps: (1) recon DONE;
+(2) Mega Millions rules correction DONE 2026-10-21 (commits dacc0d9 rules + PRIZES, fa6cb55 inline
+manual-entry errors); (3) checker + front door; (4) jackpot automation. Out of scope until step 3:
+checker UI, multiplier dropdown, Power Play toggle, logged-out Generate, number-input 2-digit cap
+and oval circles (those ride with the checker form rebuild).
+
 Deprioritized: draw history seed + self-heal. Still worth doing (pb 2026-09-12
 and the June block stay permanent holes), but it protects history that no
 current user has tickets behind. Cron is stable; new gaps are not accumulating.
-Open question still unanswered: does lotteryresultsfeed.com support
-fetch-by-date? Nothing recorded either way. When it happens, the seed lands into
+Fetch-by-date answered 2026-10-21: yes (`draw_date` / `since` params), but the free tier only
+reaches back 30 days and allows 100 calls/month, so the June block and pb 2026-09-12 cannot be
+recovered from this feed. See FEED FACTS. When it happens, the seed lands into
 a clean schema: both `draw_date` columns are real `date` types.
 
 Deferred (post-launch): ticket scanner (wanted), multi-ticket quick pick,
 spending tracker, syndicate tracking, Stripe paywall.
 
 Backlog (do not build now):
+- Quick Pick save shows date errors as the bottom toast (easy to miss). Manual entry was moved to
+  inline errors 2026-10-21; give Quick Pick the same treatment, likely as part of the checker rebuild.
 - Memoize session-gated loads (`loadTickets`, `loadCheckinStatus`, `loadProfile`) against
   `onAuthStateChange` token-refresh re-fires — they currently re-run on every refresh, not just
   login/logout. Inherited inefficiency, harmless at current scale, not urgent.
