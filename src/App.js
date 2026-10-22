@@ -2,9 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import config from "./config";
 import { supabase } from "./supabase";
 
+// Mega Millions rules changed with the 2025-04-08 draw: Mega Ball 1-25 became 1-24,
+// $5 per play with a built-in 2X to 10X multiplier, new prize table (see PRIZES).
+// Every range check, input min/max and validation message reads from here.
 const GAMES = {
-  pb: { name: "Powerball", main: [1, 69], special: [1, 26], mainCount: 5, class: "pb" },
-  mm: { name: "Mega Millions", main: [1, 70], special: [1, 25], mainCount: 5, class: "mm" },
+  pb: { name: "Powerball", main: [1, 69], special: [1, 26], mainCount: 5, class: "pb", odds: "1 in 292,201,338" },
+  mm: { name: "Mega Millions", main: [1, 70], special: [1, 24], mainCount: 5, class: "mm", odds: "1 in 290,472,336" },
 };
 
 const MODES = {
@@ -55,9 +58,11 @@ function parseLocalDate(str) {
 const DRAW_DAYS = { pb: [1, 3, 6], mm: [2, 5] };
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-// Hard bounds. Before MIN a ticket can never settle (draw history won't reach
-// back that far); beyond MAX_DAYS_AHEAD is past any real advance-play window.
-const MIN_DRAW_DATE = "2024-01-01";
+// Hard bounds. MIN is the first Mega Millions draw under the current rules
+// (2025-04-08); earlier tickets would be checked against the wrong prize table.
+// Applies to both games (draw history starts 2026-06-03 anyway). Beyond
+// MAX_DAYS_AHEAD is past any real advance-play window.
+const MIN_DRAW_DATE = "2025-04-08";
 const MAX_DRAW_DATE_DAYS_AHEAD = 35;
 
 function maxDrawDate() {
@@ -191,41 +196,96 @@ function pickUnique(count, min, max, weights) {
   return nums.sort((a, b) => a - b);
 }
 
+// ── Prize tables ──────────────────────────────────────────────
+// Single source of truth for prize labels. Keyed by game, then tier key
+// "<main matched>+<special matched 0/1>". A tier present here means a winning
+// ticket: exactly "special matched OR 3+ main", the same rule bright-api uses
+// to settle won/lost. Changing tiers still falls under the three-place SYNC NOTE.
+//
+// mm `base` is the 1X figure and is never actually paid: every $5 play carries
+// a built-in 2X to 10X multiplier, so mm labels show the range only.
+// Source: megamillions.com How to Play (2X to 10X table), verified 2026-10-21.
+// pb `base` is the real prize without the optional Power Play.
+const MM_MULTIPLIER = { type: "built-in", values: [2, 3, 4, 5, 10] };
+const PB_POWER_PLAY = { type: "optional", name: "Power Play", match5Cap: 2000000 };
+const JACKPOT_TIER = { base: null, multiplier: null };
+
+const PRIZES = {
+  pb: {
+    "5+1": JACKPOT_TIER,
+    "5+0": { base: 1000000, multiplier: PB_POWER_PLAY },
+    "4+1": { base: 50000, multiplier: PB_POWER_PLAY },
+    "4+0": { base: 100, multiplier: PB_POWER_PLAY },
+    "3+1": { base: 100, multiplier: PB_POWER_PLAY },
+    "3+0": { base: 7, multiplier: PB_POWER_PLAY },
+    "2+1": { base: 7, multiplier: PB_POWER_PLAY },
+    "1+1": { base: 4, multiplier: PB_POWER_PLAY },
+    "0+1": { base: 4, multiplier: PB_POWER_PLAY },
+  },
+  mm: {
+    "5+1": JACKPOT_TIER,
+    "5+0": { base: 1000000, multiplier: MM_MULTIPLIER },
+    "4+1": { base: 10000, multiplier: MM_MULTIPLIER },
+    "4+0": { base: 500, multiplier: MM_MULTIPLIER },
+    "3+1": { base: 200, multiplier: MM_MULTIPLIER },
+    "3+0": { base: 10, multiplier: MM_MULTIPLIER },
+    "2+1": { base: 10, multiplier: MM_MULTIPLIER },
+    "1+1": { base: 7, multiplier: MM_MULTIPLIER },
+    "0+1": { base: 5, multiplier: MM_MULTIPLIER },
+  },
+};
+
+const SPECIAL_ABBR = { pb: "PB", mm: "MB" };
+
+function prizeTierKey(matchedMain, matchedSpecial) {
+  return `${matchedMain}+${matchedSpecial ? 1 : 0}`;
+}
+
+// $1M / $10M for whole millions, otherwise $50,000 style.
+function formatPrize(n) {
+  if (n >= 1000000 && n % 1000000 === 0) return `$${n / 1000000}M`;
+  return `$${n.toLocaleString("en-US")}`;
+}
+
+// Label for a non-jackpot winning tier. Kept short to fit one line on a 375px card.
+function prizeLabel(game, key) {
+  const tier = PRIZES[game][key];
+  const [main, special] = key.split("+").map(Number);
+  const abbr = SPECIAL_ABBR[game];
+  const name = main === 0 ? `Matched ${abbr}`
+    : special ? `Matched ${main} + ${abbr}` : `Matched ${main}`;
+  const m = tier.multiplier;
+  if (m.type === "built-in") {
+    const lo = Math.min(...m.values), hi = Math.max(...m.values);
+    return `${name} · ${formatPrize(tier.base * lo)} to ${formatPrize(tier.base * hi)}`;
+  }
+  if (key === "5+0" && m.match5Cap) {
+    return `${name} · ${formatPrize(tier.base)} base (${formatPrize(m.match5Cap)} w/ PP)`;
+  }
+  return `${name} · ${formatPrize(tier.base)} base`;
+}
+
 // ── Result checking ───────────────────────────────────────────
+const RESULT_STYLE = {
+  jackpot: { color: "#f5a623", bg: "rgba(245,166,35,0.15)", border: "rgba(245,166,35,0.4)" },
+  win: { color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" },
+  none: { color: "#6b6b82", bg: "rgba(107,107,130,0.1)", border: "#2a2a38" },
+};
+
 function checkResult(ticket, draws) {
   const draw = draws.find(d => d.game === ticket.game && d.draw_date === ticket.draw_date);
   if (!draw) return null;
+  const table = PRIZES[ticket.game];
+  if (!table) return null;
 
   const matchedMain = ticket.numbers.filter(n => draw.numbers.includes(n)).length;
   const matchedSpecial = ticket.special === draw.special;
+  const key = prizeTierKey(matchedMain, matchedSpecial);
+  const tier = table[key];
 
-  if (ticket.game === "pb") {
-    if (matchedMain === 5 && matchedSpecial) return { label: "🏆 JACKPOT", color: "#f5a623", bg: "rgba(245,166,35,0.15)", border: "rgba(245,166,35,0.4)" };
-    if (matchedMain === 5) return { label: "Matched 5 — $1,000,000", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 4 && matchedSpecial) return { label: "Matched 4 + PB — $50,000", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 4) return { label: "Matched 4 — $100", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 3 && matchedSpecial) return { label: "Matched 3 + PB — $100", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 3) return { label: "Matched 3 — $7", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 2 && matchedSpecial) return { label: "Matched 2 + PB — $7", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 1 && matchedSpecial) return { label: "Matched 1 + PB — $4", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedSpecial) return { label: "Matched PB — $4", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    return { label: "No match", color: "#6b6b82", bg: "rgba(107,107,130,0.1)", border: "#2a2a38" };
-  }
-
-  if (ticket.game === "mm") {
-    if (matchedMain === 5 && matchedSpecial) return { label: "🏆 JACKPOT", color: "#f5a623", bg: "rgba(245,166,35,0.15)", border: "rgba(245,166,35,0.4)" };
-    if (matchedMain === 5) return { label: "Matched 5 — $1,000,000", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 4 && matchedSpecial) return { label: "Matched 4 + MB — $10,000", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 4) return { label: "Matched 4 — $500", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 3 && matchedSpecial) return { label: "Matched 3 + MB — $200", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 3) return { label: "Matched 3 — $10", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 2 && matchedSpecial) return { label: "Matched 2 + MB — $10", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedMain === 1 && matchedSpecial) return { label: "Matched 1 + MB — $4", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    if (matchedSpecial) return { label: "Matched MB — $2", color: "#3ecf8e", bg: "rgba(62,207,142,0.15)", border: "rgba(62,207,142,0.3)" };
-    return { label: "No match", color: "#6b6b82", bg: "rgba(107,107,130,0.1)", border: "#2a2a38" };
-  }
-
-  return null;
+  if (!tier) return { label: "No match", ...RESULT_STYLE.none };
+  if (tier.base === null) return { label: "🏆 JACKPOT", ...RESULT_STYLE.jackpot };
+  return { label: prizeLabel(ticket.game, key), ...RESULT_STYLE.win };
 }
 
 // ── Type scale ────────────────────────────────────────────────
@@ -637,9 +697,9 @@ export default function App() {
     const g = GAMES[manualForm.game];
     if (nums.length !== 5) { showToast("Enter all 5 main numbers"); return; }
     if (isNaN(special)) { showToast("Enter the " + (manualForm.game === "pb" ? "Powerball" : "Mega Ball")); return; }
-    if (nums.some(n => n < g.main[0] || n > g.main[1])) { showToast("Main numbers out of range"); return; }
+    if (nums.some(n => n < g.main[0] || n > g.main[1])) { showToast(`Main numbers must be ${g.main[0]} to ${g.main[1]}`); return; }
     if (new Set(nums).size !== 5) { showToast("Numbers must be unique"); return; }
-    if (special < g.special[0] || special > g.special[1]) { showToast("Special ball out of range"); return; }
+    if (special < g.special[0] || special > g.special[1]) { showToast(`${manualForm.game === "pb" ? "Powerball" : "Mega Ball"} must be ${g.special[0]} to ${g.special[1]}`); return; }
     const dateError = validateDrawDate(manualForm.drawDate);
     if (dateError) { showToast(dateError); return; }
     // Soft warning: first click arms it, second click through saves.
@@ -748,7 +808,7 @@ export default function App() {
                 {Object.entries(GAMES).map(([key,g])=>(
                   <div key={key} style={S.gameCard(game===key,key)} onClick={()=>{setGame(key);setPick(null);setShowSave(false);}}>
                     <div style={S.gameName(key)}>{g.name}</div>
-                    <div style={S.gameOdds}>{key==="pb"?"1 in 292,201,338":"1 in 302,575,350"}</div>
+                    <div style={S.gameOdds}>{g.odds}</div>
                     <div style={S.gameJackpot}>{config.jackpots[key]}</div>
                     <div style={S.gameNextDraw}>Next: {nextDrawLabel(key)}</div>
                   </div>
@@ -853,14 +913,14 @@ export default function App() {
     <div style={{display:"flex", gap:8, marginBottom:16}}>
       {manualForm.numbers.map((n, i) => (
         <input key={i} style={{width:48, height:48, borderRadius:"50%", background:"#1c1c26", border:"1.5px solid #2a2a38", color:"#f0f0f5", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:Math.max(T.body, INPUT_FONT_MIN), textAlign:"center", outline:"none"}}
-         type="number" placeholder="—" value={n} min={1} max={manualForm.game === "pb" ? 69 : 70}
+         type="number" placeholder="—" value={n} min={GAMES[manualForm.game].main[0]} max={GAMES[manualForm.game].main[1]}
           onChange={e => { const nums = [...manualForm.numbers]; nums[i] = e.target.value; setManualForm({...manualForm, numbers: nums}); }} />
       ))}
     </div>
     <div style={S.sectionLabel}>{manualForm.game === "pb" ? "Powerball" : "Mega Ball"}</div>
     <div style={{marginBottom:16}}>
       <input style={{width:48, height:48, borderRadius:"50%", background: manualForm.game==="pb"?"#e8364a":"#f5a623", border:"none", color: manualForm.game==="pb"?"white":"#0a0a0f", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:Math.max(T.body, INPUT_FONT_MIN), textAlign:"center", outline:"none"}}
-        type="number" placeholder="—" value={manualForm.special} min={1} max={manualForm.game === "pb" ? 26 : 25}
+        type="number" placeholder="—" value={manualForm.special} min={GAMES[manualForm.game].special[0]} max={GAMES[manualForm.game].special[1]}
         onChange={e => setManualForm({...manualForm, special: e.target.value})} />
     </div>
     <label style={S.formLabel}>Draw Date</label>
