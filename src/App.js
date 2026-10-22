@@ -319,7 +319,8 @@ function checkResult(ticket, draws, multiplier) {
 // ── Ticket checker ────────────────────────────────────────────
 // One form for checking a ticket and (logged in) saving it. Numbers are kept as
 // strings while typing; validateTicketForm turns them into a ticket object.
-const EMPTY_TICKET_FORM = { game: "pb", numbers: ["", "", "", "", ""], special: "", drawDate: "", multiplier: "", notes: "" };
+// pickMode: "manual" for typed tickets; a generated pick keeps its mode until a number is edited.
+const EMPTY_TICKET_FORM = { game: "pb", numbers: ["", "", "", "", ""], special: "", drawDate: "", multiplier: "", notes: "", pickMode: "manual" };
 
 // Most recent draw date on file for a game (YYYY-MM-DD), or "" if none loaded.
 function latestDrawDate(draws, game) {
@@ -448,6 +449,9 @@ const S = {
   checkerResult: { marginTop: 20, paddingTop: 16, borderTop: "1px solid #2a2a38" },
   checkerNote: { fontSize: T.small, color: "#6b6b82", lineHeight: 1.5, marginTop: 10 },
   tBallHit: { boxShadow: "0 0 0 2px #3ecf8e" },
+  carryCard: { background: "rgba(124,106,255,0.08)", border: "1px solid rgba(124,106,255,0.4)", borderRadius: 16, padding: "16px 18px", marginBottom: 16 },
+  carryTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: T.body, color: "#f0f0f5", marginBottom: 4 },
+  carryActions: { display: "flex", gap: 8, alignItems: "center", marginTop: 14 },
   checkerDrawRow: { display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" },
   saveForm: { background: "#13131a", border: "1px solid #2a2a38", borderRadius: 20, padding: 24, marginTop: 16 },
   formLabel: { fontFamily: "'DM Mono', monospace", fontSize: T.micro, color: "#6b6b82", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, display: "block" },
@@ -562,11 +566,11 @@ function TicketChecker({ form, setForm, draws, onSave, guest = false }) {
       <div style={S.checkerBallsRow}>
         {form.numbers.map((n, i) => (
           <input key={i} {...ballInput} style={S.checkerBall("main")} aria-label={`Main number ${i + 1}`} value={n}
-            onChange={e => { const nums = [...form.numbers]; nums[i] = cleanNumberInput(e.target.value); update({ numbers: nums }); }} />
+            onChange={e => { const nums = [...form.numbers]; nums[i] = cleanNumberInput(e.target.value); update({ numbers: nums, pickMode: "manual" }); }} />
         ))}
         <div style={S.sep}>+</div>
         <input {...ballInput} style={S.checkerBall(form.game)} aria-label={SPECIAL_NAME[form.game]} value={form.special}
-          onChange={e => update({ special: cleanNumberInput(e.target.value) })} />
+          onChange={e => update({ special: cleanNumberInput(e.target.value), pickMode: "manual" })} />
       </div>
       <label style={S.formLabel}>Draw Date</label>
       <input style={S.formInput} type="date" value={form.drawDate} min={MIN_DRAW_DATE} max={maxDrawDate()} onChange={e => update({ drawDate: e.target.value })} />
@@ -722,6 +726,9 @@ export default function App() {
   // Non-draw-day confirmation. Holds the date string the user was warned about,
   // so editing the date re-arms the warning instead of silently staying armed.
   const [warnedDate, setWarnedDate] = useState(null);
+  // Quick Pick save error, shown inline. Stores the form object it was raised
+  // against; any edit (or a new Generate) replaces form, so it clears itself.
+  const [saveError, setSaveError] = useState(null);
   const [toast, setToast] = useState("");
   const [expandedTicket, setExpandedTicket] = useState(null);
   const [editValues, setEditValues] = useState({});
@@ -732,6 +739,12 @@ export default function App() {
   // ("login" | "signup" | null) shown inside the shell instead of the checker.
   const [guestTab, setGuestTab] = useState("check");
   const [authView, setAuthView] = useState(null);
+  // Signup carry-through: the ticket a logged-out visitor asked to save, held
+  // in memory only (no localStorage, no DB write) until they sign up or log in.
+  // Then it is offered with a one-tap Save; never saved automatically.
+  const [carried, setCarried] = useState(null); // { ticket, pickMode }
+  const [carryError, setCarryError] = useState("");
+  const [carrySaving, setCarrySaving] = useState(false);
   const [checkinClaimed, setCheckinClaimed] = useState(false);
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [matchPoints, setMatchPoints] = useState({});
@@ -854,18 +867,26 @@ export default function App() {
     setGuestTab("check");
     setMode("random");
     setPick(null);
+    setCarried(null);
+    setView("pick");
     supabase.auth.signOut();
   };
 
   // Generate -> checker: the pick is for the next draw, not the latest on file.
   const usePickInChecker = () => {
     if (!pick) return;
-    setCheckerForm({ ...EMPTY_TICKET_FORM, game: pick.game, numbers: pick.numbers.map(String), special: String(pick.special), drawDate: nextDrawDate(pick.game) });
+    setCheckerForm({ ...EMPTY_TICKET_FORM, game: pick.game, numbers: pick.numbers.map(String), special: String(pick.special), drawDate: nextDrawDate(pick.game), pickMode: pick.mode });
     setGuestTab("check");
   };
 
   // Logged out, Save opens signup. The form stays in App state; nothing is written.
-  const guestSave = async () => { setAuthView("signup"); return null; };
+  const guestSave = async (ticket, form) => {
+    setCarried({ ticket, pickMode: form.pickMode || "manual" });
+    setCarryError("");
+    setAuthView("signup");
+    return null;
+  };
+  const leaveAuth = () => { setAuthView(null); setCarried(null); };
 
   const generate = () => {
     const g = GAMES[game];
@@ -899,13 +920,14 @@ export default function App() {
     const special = randInt(g.special[0], g.special[1]);
     setPick({ game, numbers: nums, special, mode, rationale });
     setShowSave(false);
-    setForm({ drawDate: toLocalDateString(new Date()), notes: "" });
+    // Next official draw (ET), not today's date: after a draw starts, today is over.
+    setForm({ drawDate: nextDrawDate(game), notes: "" });
   };
 
   const saveTicket = async () => {
     if (!pick || !session) return;
     const dateError = validateDrawDate(form.drawDate);
-    if (dateError) { showToast(dateError); return; }
+    if (dateError) { setSaveError({ msg: dateError, form }); return; }
     // Soft warning: first click arms it, second click through saves.
     if (nonDrawDayWarning(pick.game, form.drawDate) && warnedDate !== warnKey(pick.game, form.drawDate)) {
       setWarnedDate(warnKey(pick.game, form.drawDate));
@@ -921,7 +943,7 @@ export default function App() {
       notes: form.notes || null,
       stake: 0, payout: 0, status: "open",
     }).select().single();
-    if (error) { showToast("Error saving ticket"); return; }
+    if (error) { setSaveError({ msg: "Error saving ticket. Please try again.", form }); return; }
     setTickets([data, ...tickets]);
     setShowSave(false);
     setPick(null);
@@ -953,17 +975,19 @@ export default function App() {
   };
   // TicketChecker has already validated the ticket and handled the soft warning.
   // Returns an error string for the checker to show inline, or null on success.
+  const insertTicket = (ticket, pickMode, notes) => supabase.from("tickets").insert({
+    user_id: session.user.id,
+    game: ticket.game,
+    numbers: ticket.numbers,
+    special: ticket.special,
+    pick_mode: pickMode,
+    draw_date: ticket.draw_date,
+    notes: notes || null,
+    stake: 0, payout: 0, status: "open",
+  }).select().single();
+
   const saveCheckedTicket = async (ticket, form) => {
-    const { data, error } = await supabase.from("tickets").insert({
-      user_id: session.user.id,
-      game: ticket.game,
-      numbers: ticket.numbers,
-      special: ticket.special,
-      pick_mode: "manual",
-      draw_date: ticket.draw_date,
-      notes: form.notes || null,
-      stake: 0, payout: 0, status: "open",
-    }).select().single();
+    const { data, error } = await insertTicket(ticket, form.pickMode || "manual", form.notes);
     if (error) return "Error saving ticket. Please try again.";
     setTickets([data, ...tickets]);
     setShowChecker(false);
@@ -971,6 +995,20 @@ export default function App() {
     showToast("✓ Ticket saved!");
     return null;
   };
+
+  // One-tap Save for the ticket carried through signup.
+  const saveCarried = async () => {
+    if (!carried || !session || carrySaving) return;
+    setCarrySaving(true);
+    const { data, error } = await insertTicket(carried.ticket, carried.pickMode, null);
+    setCarrySaving(false);
+    if (error) { setCarryError("Error saving ticket. Please try again."); return; }
+    setTickets(prev => [data, ...prev]);
+    setCarried(null);
+    setCarryError("");
+    showToast("✓ Ticket saved!");
+  };
+  const dismissCarried = () => { setCarried(null); setCarryError(""); };
     const getDrawReminders = () => {
     const now = new Date();
     const day = now.getDay();
@@ -1080,7 +1118,7 @@ export default function App() {
             {session ? (
               <button style={S.signOutBtn} onClick={signOut}>Sign out</button>
             ) : authView ? (
-              <button style={S.signOutBtn} onClick={() => setAuthView(null)}>Back</button>
+              <button style={S.signOutBtn} onClick={leaveAuth}>Back</button>
             ) : (
               <button style={S.signOutBtn} onClick={() => setAuthView("login")}>Log in</button>
             )}
@@ -1110,6 +1148,22 @@ export default function App() {
             </div>
           )}
           {session && (<>
+          {carried && (
+            <div style={S.carryCard}>
+              <div style={S.carryTitle}>Save the ticket you checked?</div>
+              <div style={{ ...S.formHint, marginBottom: 12 }}>{GAMES[carried.ticket.game].name} · {formatDrawDate(carried.ticket.draw_date)}</div>
+              <div style={S.checkerDrawRow}>
+                {carried.ticket.numbers.map(n => <div key={n} style={S.tBall("main")}>{n}</div>)}
+                <div style={S.sep}>+</div>
+                <div style={S.tBall(carried.ticket.game)}>{carried.ticket.special}</div>
+              </div>
+              {carryError && <div role="alert" style={{ ...S.formError, marginTop: 12 }}>{carryError}</div>}
+              <div style={S.carryActions}>
+                <button style={{ ...S.btnSave, marginTop: 0, flex: 1 }} onClick={saveCarried} disabled={carrySaving}>{carrySaving ? "Saving..." : "Save this ticket"}</button>
+                <button style={S.usernameCancelBtn} onClick={dismissCarried}>Not now</button>
+              </div>
+            </div>
+          )}
           {getDrawReminders().map(r => (
   <div key={r.game} style={{ background: `rgba(${r.game==="pb"?"232,54,74":"245,166,35"},0.1)`, border: `1px solid rgba(${r.game==="pb"?"232,54,74":"245,166,35"},0.3)`, borderRadius: 12, padding: "12px 16px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
     <span style={{ fontSize: ICON_SIZE.banner }}>🎟️</span>
@@ -1160,6 +1214,7 @@ export default function App() {
                   <label style={S.formLabel}>Notes (optional)</label>
                   <input style={S.formInput} type="text" placeholder="e.g. Friday lucky pick..." value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} />
                   <div style={{ fontSize:T.small, color:"#6b6b82", marginBottom:12 }}>Tip: add stake and payout after the draw from My Tickets</div>
+                  {saveError && saveError.form === form && <div role="alert" style={S.formError}>{saveError.msg}</div>}
                   {saveWarnArmed && <div style={S.drawDayWarning}>{saveWarning}</div>}
                   <button style={S.btnSave} onClick={saveTicket}>
                     {saveWarnArmed ? "Save anyway" : "Save Ticket"}
